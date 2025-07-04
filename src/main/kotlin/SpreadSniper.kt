@@ -15,7 +15,8 @@ const val UNISWAP_ROUTER = "0xERJIEWOJREIWJRO"
 const val TOKEN_A = "0xur83u48302u4"
 const val TOKEN_B = "0xA8u48302u4"
 val AMOUNT = BigInteger("1000000000") // 100 USDC (6 decimals)
-const val NODE_ENDPOINT = "http://localhost:3000"
+//const val NODE_ENDPOINT = "http://localhost:3000"
+const val NODE_ENDPOINT = "https://loanshot.onrender.com"
 const val PRICE_SPREAD_THRESHOULD = 0.002 // $0.002
 
 suspend fun main() = coroutineScope {
