@@ -34,6 +34,9 @@ tasks {
         archiveClassifier.set("")
         archiveVersion.set("")
         mergeServiceFiles()
+        manifest {
+            attributes["Main-Class"] = "SpreadSniperKt"
+        }
     }
 
     build {
