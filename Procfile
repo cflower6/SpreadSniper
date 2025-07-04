@@ -1,1 +1,1 @@
-java -jar build/libs/spreadsniper.jar
+start: java -jar build/libs/spreadsniper.jar
