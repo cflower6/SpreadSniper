@@ -20,7 +20,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("SpreadSniperKt") // Match your entrypoint filename
+    mainClass.set("SpreadSniperkt") // Match your entrypoint filename
 }
 
 tasks.test {
