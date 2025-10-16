@@ -1,16 +1,25 @@
+import models.DexPair
+
 object TriggerService {
     data class Opportunity(
         val pair: DexPair,
         val buyPrice: Double,
         val sellPrice: Double,
         val spread: Double,
-        val adjustedProfit: Double // 💰 after DEX fees + gas
+        val adjustedProfit: Double // after DEX fees + gas
     )
 
     fun findBestOpportunity(
         opportunities: List<Opportunity>,
         minProfitUSD: Double
     ): Opportunity? {
+        /**
+         * Filter such that each opportunity objects adjustedProfile is Greater than our minProfit
+         *
+         * then find the LARGEST difference or null (safety)
+         *
+         * also only initiates (look at the ?.) if the previous chain is NOT null
+         */
         return opportunities
             .filter { it.adjustedProfit > minProfitUSD }
             .maxByOrNull { it.adjustedProfit }

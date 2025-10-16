@@ -1,3 +1,5 @@
+package configurations
+
 import io.github.cdimascio.dotenv.dotenv
 
 object DotenvLoader {
@@ -6,7 +8,7 @@ object DotenvLoader {
         val isProd = System.getenv("RAILWAY_ENVIRONMENT") != null
 
         if (!isProd) {
-            println("🛠 Loading local .env file")
+            println("Loading local .env file")
 
             val dotenv = dotenv {
                 ignoreIfMalformed = true
@@ -18,9 +20,9 @@ object DotenvLoader {
                 System.setProperty(entry.key, entry.value)
             }
 
-            println("✅ .env loaded: ${dotenv.entries().size} variables")
+            println(".env loaded: ${dotenv.entries().size} variables")
         } else {
-            println("🚀 Running in Railway (cloud env vars only)")
+            println("Running in Railway (cloud env vars only)")
         }
     }
 }

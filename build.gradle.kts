@@ -2,9 +2,10 @@ plugins {
     kotlin("jvm") version "2.1.20"
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
+    kotlin("plugin.serialization") version "1.9.0"
 }
 
-group = "org.cflowers"
+group = "org.dust2dust"
 version = "1.0-SNAPSHOT"
 
 repositories {
@@ -13,9 +14,10 @@ repositories {
 
 dependencies {
     implementation("org.web3j:core:4.9.5")
-    implementation("io.ktor:ktor-client-core:2.3.3")
-    implementation("io.ktor:ktor-client-cio:2.3.3")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.3")
+    implementation("io.ktor:ktor-client-core:2.3.11")
+    implementation("io.ktor:ktor-client-cio:2.3.11") // For CIO engine (or choose another like Apache, OkHttp)
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
 }
