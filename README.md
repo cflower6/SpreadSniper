@@ -28,7 +28,6 @@
 - [Deployment](#deployment)
 - [TODOs](#todos)
 - [Contributing](#contributing)
-- [License](#license)
 
 ---
 
