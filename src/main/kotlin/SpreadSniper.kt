@@ -15,9 +15,10 @@ fun main() {
         val amountIn = AppConfig.tradeAmount // 1 DAI
 
         val dexPairs = listOf(
-            DexPair.BASE_USDC_WETH,
+            DexPair.BASE_AERO_UNI_WETH,
         )
 
+        // Start of the check loop
         while (true) {
             val found = mutableListOf<TriggerService.Opportunity>()
             /**
@@ -33,17 +34,19 @@ fun main() {
                     val web3Buy = getWeb3ForChain(pair.buyOn.chain)
                     val web3Sell = getWeb3ForChain(pair.sellOn.chain)
 
-                    // Get the current price for the same crypto on different "Routers" (chains)
-                    val buyPrice = DexUtils.getPriceFromRouter(web3Buy, pair.buyOn.router, pair.buyOn.path, amountIn)
+                    // Get the current price for the same crypto on different "Routers" (DEXs)
+                    val buyPrice =
+                        DexUtils.getPriceFromRouter(web3Buy, pair.buyOn.router, pair.buyOn.path, amountIn, 6)
+
                     val sellPrice =
-                        DexUtils.getPriceFromRouter(web3Sell, pair.sellOn.router, pair.sellOn.path, amountIn)
+                        DexUtils.getPriceFromRouter(web3Sell, pair.sellOn.router, pair.sellOn.path, amountIn, 18)
 
                     // do our null checks
                     if (buyPrice == null || sellPrice == null) continue
 
                     // We get the amount in ETH for easier compares
-                    //TODO: check if I can always use toETH or is it just because it's ETH
                     val amountInEth = amountIn.toEth(pair.buyOn.outputDecimals)
+
                     // Find the amount
                     val tradeAmountUSD = buyPrice * amountInEth
 
@@ -54,7 +57,8 @@ fun main() {
                     val grossProfit = rawSpread * tradeAmountUSD
                     val dexFeeLoss = (buyPrice + sellPrice) * 0.5 * AppConfig.dexFeeRate * tradeAmountUSD
                     val netProfit = grossProfit - dexFeeLoss - AppConfig.gasCostEstimate
-                    //
+
+                    // We're building the opportunity object we have
                     found += TriggerService.Opportunity(
                         pair = pair,
                         buyPrice = buyPrice,
