@@ -19,7 +19,7 @@ enum class Dex(
     AERODROME_BASE(
         router = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
         path = listOf(
-            "0x3548029694fbb241d45fb24ba0cd9c9d4e745f16", // WETH
+            "0x4200000000000000000000000000000000000006", // WETH
             "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"// USDC
         ),
         outputDecimals = 6,

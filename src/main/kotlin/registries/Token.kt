@@ -8,7 +8,7 @@ data class Token(
 
 object Tokens {
     // Base canonical addresses
-    val WETH = Token("WETH", "0x3548029694fbb241d45fb24ba0cd9c9d4e745f16", 18)
+    val WETH = Token("WETH", "0x4200000000000000000000000000000000000006", 18)
     val USDC = Token("USDC", "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6)
 
     private val byAddr = listOf(WETH, USDC).associateBy { it.address.lowercase() }

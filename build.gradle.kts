@@ -20,6 +20,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
+    implementation("com.sun.mail:jakarta.mail:2.0.1")
 }
 
 application {

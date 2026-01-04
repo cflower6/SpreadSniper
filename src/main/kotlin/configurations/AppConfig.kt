@@ -18,6 +18,10 @@ object AppConfig {
 
     val apiKey: String by lazy { getEnv("API_KEY") }
 
+    val emailFrom: String by lazy { getEnv("EMAIL_FROM") }
+    val emailTo: String by lazy { getEnv("EMAIL_TO") }
+    val emailPassword: String by lazy { getEnv("EMAIL_PASSWORD") }
+
     private fun getEnv(key: String): String {
         return System.getProperty(key)
             ?: System.getenv(key)

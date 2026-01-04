@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import models.DexPair
 import registries.Tokens
 import services.Detector
+import services.EmailNotifierService
 import utils.getWeb3ForChain
 
 fun main() {
@@ -33,6 +34,10 @@ fun main() {
         val quoters = listOf(aeroQuoter, uniV2Quoter)
 
         val web3Base = getWeb3ForChain(dexPairs.first().buyOn.chain)
+
+        var lastEmailMs = 0L
+
+        val EMAIL_COOLDOWN_MS = 5 * 60 * 1000L // 5 minutes
 
         while (true) {
             val found = mutableListOf<TriggerService.Opportunity>()
@@ -72,6 +77,23 @@ fun main() {
              */
             TriggerService.findBestOpportunity(found, threshold)?.let {
                 try {
+                    val body = """
+                        Pair: ${it.pair.label}
+                        Spread: ${"%.5f".format(it.spread)}
+                        Est Profit: $${"%.2f".format(it.adjustedProfit)}
+                    """.trimIndent()
+
+                    val now = System.currentTimeMillis()
+                    // Stopping spam :)
+                    if (now - lastEmailMs > EMAIL_COOLDOWN_MS) {
+                        EmailNotifierService.send(
+                            subject = "🚨 SpreadSniper Opportunity",
+                            body = body
+                        )
+                        lastEmailMs = now
+                    }
+
+
                     sendToLoanShot(
                         TriggerPayload(
                             it.pair.label,
