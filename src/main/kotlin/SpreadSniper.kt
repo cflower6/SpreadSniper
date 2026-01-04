@@ -1,24 +1,39 @@
+import TriggerService.toOpportunity
 import configurations.AppConfig
 import configurations.DotenvLoader
+import dex.AerodromeQuoter
+import dex.UniV2Quoter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import models.DexPair
-import utils.DexUtils
+import registries.Tokens
+import services.Detector
 import utils.getWeb3ForChain
-import utils.toEth
 
 fun main() {
-
     DotenvLoader.load()
+
     runBlocking {
         val threshold = AppConfig.profitThresholdUSD
-        val amountIn = AppConfig.tradeAmount // 1 DAI
 
-        val dexPairs = listOf(
-            DexPair.BASE_AERO_UNI_WETH,
+        val dexPairs = listOf(DexPair.BASE_AERO_UNI_WETH)
+
+        val aeroQuoter = AerodromeQuoter(
+            name = "AERODROME",
+            router = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
+            factory = "0x420dd381b31aef6683db6b902084cb0ffece40da",
+            stable = false
         )
 
-        // Start of the check loop
+        val uniV2Quoter = UniV2Quoter(
+            name = "UNIV2",
+            router = "0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24"
+        )
+
+        val quoters = listOf(aeroQuoter, uniV2Quoter)
+
+        val web3Base = getWeb3ForChain(dexPairs.first().buyOn.chain)
+
         while (true) {
             val found = mutableListOf<TriggerService.Opportunity>()
             /**
@@ -30,42 +45,18 @@ fun main() {
              */
             for (pair in dexPairs) {
                 try {
-                    // Use the web3 "SDK" to set the chains we want
-                    val web3Buy = getWeb3ForChain(pair.buyOn.chain)
-                    val web3Sell = getWeb3ForChain(pair.sellOn.chain)
+                    val tokenIn = Tokens.byAddress(pair.buyOn.path.first())
+                    val tokenOut = Tokens.byAddress(pair.buyOn.path.last())
 
-                    // Get the current price for the same crypto on different "Routers" (DEXs)
-                    val buyPrice =
-                        DexUtils.getPriceFromRouter(web3Buy, pair.buyOn.router, pair.buyOn.path, amountIn, 6)
+                    val amountInRaw = AppConfig.tradeAmount
 
-                    val sellPrice =
-                        DexUtils.getPriceFromRouter(web3Sell, pair.sellOn.router, pair.sellOn.path, amountIn, 18)
+                    val snap = Detector.detectOnce(web3Base, tokenIn, tokenOut, amountInRaw, quoters)
 
-                    // do our null checks
-                    if (buyPrice == null || sellPrice == null) continue
+                    if (snap == null) continue
+                    println("Detector block: ${snap.blockNumber}")
 
-                    // We get the amount in ETH for easier compares
-                    val amountInEth = amountIn.toEth(pair.buyOn.outputDecimals)
-
-                    // Find the amount
-                    val tradeAmountUSD = buyPrice * amountInEth
-
-                    // simple sellPrice minus buy price
-                    val rawSpread = sellPrice - buyPrice
-
-                    //
-                    val grossProfit = rawSpread * tradeAmountUSD
-                    val dexFeeLoss = (buyPrice + sellPrice) * 0.5 * AppConfig.dexFeeRate * tradeAmountUSD
-                    val netProfit = grossProfit - dexFeeLoss - AppConfig.gasCostEstimate
-
-                    // We're building the opportunity object we have
-                    found += TriggerService.Opportunity(
-                        pair = pair,
-                        buyPrice = buyPrice,
-                        sellPrice = sellPrice,
-                        spread = rawSpread,
-                        adjustedProfit = netProfit
-                    )
+                    val opp = toOpportunity(pair, snap)
+                    if (opp != null) found += opp
 
                 } catch (e: Exception) {
                     println("Error in ${pair.label}: ${e.message}")
@@ -81,12 +72,14 @@ fun main() {
              */
             TriggerService.findBestOpportunity(found, threshold)?.let {
                 try {
-                    sendToLoanShot(TriggerPayload(
-                        it.pair.label,
-                        0.99,
-                        1.01,
-                        0.8,
-                    ))
+                    sendToLoanShot(
+                        TriggerPayload(
+                            it.pair.label,
+                            0.99,
+                            1.01,
+                            0.8,
+                        )
+                    )
                 } catch (e: Exception) {
                     println("<UNK> Error in ${e.message}")
                 } finally {
@@ -96,7 +89,7 @@ fun main() {
                 TriggerService.logNoOpportunities(found)
             }
 
-            delay(5000) // Check every 5 seconds
+            delay(5000)
         }
     }
 }
