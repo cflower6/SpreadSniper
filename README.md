@@ -3,7 +3,7 @@
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-blue?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Deploy on Railway](https://img.shields.io/badge/Deploy-Railway-black?logo=railway)](https://railway.app/template)
+[![Deploy on Railway](https://img.shields.io/badge/Deploy-Railway-black?logo=railway)](https://railway.com/project/4935c528-3d18-4d7a-ab0b-1faa0db34349/service/b8b7aacb-0250-44b2-bd4f-28138b0e9080?environmentId=52b13565-762a-400c-b771-ff23d6a6d215)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/cflower6/SpreadSniper/pulls)
 
 ---
