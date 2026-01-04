@@ -11,12 +11,12 @@ import jakarta.mail.internet.MimeMessage
 import java.util.Properties
 
 object EmailNotifierService {
-    private val from = AppConfig.emailFrom
+    private val fromEmail = AppConfig.emailFrom
     private val to = AppConfig.emailTo
     private val password = AppConfig.emailPassword
 
     private val session: Session? by lazy {
-        if (from.isBlank() || password.isBlank()) return@lazy null
+        if (fromEmail.isBlank() || password.isBlank()) return@lazy null
 
         val props = Properties().apply {
             put("mail.smtp.host", "smtp.gmail.com")
@@ -27,7 +27,7 @@ object EmailNotifierService {
 
         Session.getInstance(props, object : Authenticator() {
             override fun getPasswordAuthentication(): PasswordAuthentication {
-                return PasswordAuthentication(from, password)
+                return PasswordAuthentication(fromEmail, password)
             }
         })
     }
@@ -40,7 +40,7 @@ object EmailNotifierService {
 
         try {
             val msg = MimeMessage(session).apply {
-                setFrom(InternetAddress(from as String?))
+                setFrom(InternetAddress(fromEmail))
                 setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
                 setSubject(subject)
                 setText(body)
