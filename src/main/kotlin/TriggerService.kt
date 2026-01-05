@@ -5,6 +5,13 @@ import services.DetectedSpread
 import utils.toHuman
 
 object TriggerService {
+    /**
+     * Dex pair - Decent. Exchanges
+     * Buy Price - Price of crypto on the Dex
+     * Sell Price - Price of crypto on the other Dex
+     * Spread - (Sell Price - Buy Price)
+     * AdjustedProfit - Spread with fees and gas subtracted
+     */
     data class Opportunity(
         val pair: DexPair,
         val buyPrice: Double,
@@ -54,7 +61,7 @@ object TriggerService {
         val worst = sorted.first()
         val best = sorted.last()
 
-        // Convert to human prices (tokenOut per tokenIn) so your existing profit math works
+        // Convert to human prices (tokenOut per tokenIn) so existing profit math works
         val amountOutWorstHuman = toHuman(worst.amountOutRaw, snap.tokenOut).toDouble()
         val amountOutBestHuman  = toHuman(best.amountOutRaw, snap.tokenOut).toDouble()
         val amountInHuman       = toHuman(snap.amountInRaw, snap.tokenIn).toDouble()
@@ -65,13 +72,14 @@ object TriggerService {
 
         val rawSpread = sellPrice - buyPrice
 
-        // Quick approximate USD sizing if tokenOut is USDC
-        val tradeAmountUSD =
-            if (snap.tokenOut.symbol == "USDC") amountOutWorstHuman else 0.0
+        // Gross profit in USD (since buy/sell prices are $/WETH)
+        val grossProfitUsd = rawSpread * amountInHuman
 
-        val grossProfit = rawSpread * tradeAmountUSD
-        val dexFeeLoss = (buyPrice + sellPrice) * 0.5 * AppConfig.dexFeeRate * tradeAmountUSD
-        val netProfit = grossProfit - dexFeeLoss - AppConfig.gasCostEstimate
+        // Approx two-leg fee model: pay fee on notional twice
+        val avgNotionalUsd = ((buyPrice + sellPrice) / 2.0) * amountInHuman
+        val dexFeeLossUsd = 2.0 * AppConfig.dexFeeRate * avgNotionalUsd
+
+        val netProfit = grossProfitUsd - dexFeeLossUsd - AppConfig.gasCostEstimate
 
         return Opportunity(
             pair = pair,
