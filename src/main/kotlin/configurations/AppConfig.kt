@@ -17,6 +17,7 @@ object AppConfig {
     }
 
     val apiKey: String by lazy { getEnv("API_KEY") }
+    val emailApiKey: String by lazy { getEnv("RESEND_API_KEY") }
 
     val emailFrom: String by lazy { getEnv("EMAIL_FROM") }
     val emailTo: String by lazy { getEnv("EMAIL_TO") }

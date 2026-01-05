@@ -1,55 +1,96 @@
 package services
 
 import configurations.AppConfig
-import jakarta.mail.Authenticator
-import jakarta.mail.Message
-import jakarta.mail.PasswordAuthentication
-import jakarta.mail.Session
-import jakarta.mail.Transport
-import jakarta.mail.internet.InternetAddress
-import jakarta.mail.internet.MimeMessage
-import java.util.Properties
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 object EmailNotifierService {
-    private val fromEmail = AppConfig.emailFrom
-    private val to = AppConfig.emailTo
-    private val password = AppConfig.emailPassword
 
-    private val session: Session? by lazy {
-        if (fromEmail.isBlank() || password.isBlank()) return@lazy null
-
-        val props = Properties().apply {
-            put("mail.smtp.host", "smtp.gmail.com")
-            put("mail.smtp.port", "587")
-            put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "true")
-        }
-
-        Session.getInstance(props, object : Authenticator() {
-            override fun getPasswordAuthentication(): PasswordAuthentication {
-                return PasswordAuthentication(fromEmail, password)
-            }
-        })
+    private val apiKey: String by lazy {
+        AppConfig.emailApiKey
     }
 
-    fun send(subject: String, body: String) {
-        if (session == null || to.isBlank()) {
-            println("⚠️ Email not configured; skipping notification")
-            return
-        }
+    private val toEmail: String by lazy {
+        AppConfig.emailTo
+    }
 
-        try {
-            val msg = MimeMessage(session).apply {
-                setFrom(InternetAddress(fromEmail))
-                setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
-                setSubject(subject)
-                setText(body)
+    private val fromEmail: String by lazy {
+        AppConfig.emailFrom
+    }
+
+    private val http: HttpClient by lazy {
+        HttpClient(CIO) {
+            install(ContentNegotiation) {
+                json(
+                    Json {
+                        ignoreUnknownKeys = true
+                        explicitNulls = false
+                    }
+                )
             }
-
-            Transport.send(msg)
-            println("📧 Email sent")
-        } catch (e: Exception) {
-            println("❌ Email failed: ${e.message}")
         }
     }
+
+    @Serializable
+    private data class SendEmailRequest(
+        val from: String,
+        val to: List<String>,
+        val subject: String,
+        val html: String
+    )
+
+    @Serializable
+    private data class SendEmailResponse(
+        val id: String? = null,
+        @SerialName("error") val error: ResendError? = null
+    )
+
+    @Serializable
+    private data class ResendError(
+        val message: String? = null,
+        val name: String? = null
+    )
+
+    suspend fun send(subject: String, body: String) {
+        // keep your plain-text body but send as HTML safely
+        val html = """
+            <h3>$subject</h3>
+            <pre style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap;">${escapeHtml(body)}</pre>
+        """.trimIndent()
+
+        val resp: SendEmailResponse = http.post("https://api.resend.com/emails") {
+            headers {
+                append(HttpHeaders.Authorization, "Bearer $apiKey")
+                append(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            }
+            setBody(
+                SendEmailRequest(
+                    from = fromEmail,
+                    to = listOf(toEmail),
+                    subject = subject,
+                    html = html
+                )
+            )
+        }.body()
+
+        if (resp.id == null) {
+            val msg = resp.error?.message ?: "Unknown error"
+            throw IllegalStateException("Resend email failed: $msg")
+        }
+    }
+
+    private fun escapeHtml(s: String): String =
+        s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
 }
