@@ -56,30 +56,37 @@ object TriggerService {
     }
 
     fun toOpportunity(pair: DexPair, snap: DetectedSpread): Opportunity? {
-        // You’ll want to pick the best buy vs sell based on which gives you more tokenOut per tokenIn
-        val sorted = snap.quotes.sortedBy { it.amountOutRaw } // ascending
+        if (snap.quotes.size < 2) return null
+
+        val sorted = snap.quotes.sortedBy { it.amountOutRaw }
         val worst = sorted.first()
         val best = sorted.last()
 
-        // Convert to human prices (tokenOut per tokenIn) so existing profit math works
+        val amountInHuman = toHuman(snap.amountInRaw, snap.tokenIn).toDouble()
+        if (!amountInHuman.isFinite() || amountInHuman <= 0.0) return null
+
         val amountOutWorstHuman = toHuman(worst.amountOutRaw, snap.tokenOut).toDouble()
         val amountOutBestHuman  = toHuman(best.amountOutRaw, snap.tokenOut).toDouble()
-        val amountInHuman       = toHuman(snap.amountInRaw, snap.tokenIn).toDouble()
 
-        // Price here is tokenOut per tokenIn
+        // Guard zero/NaN quotes
+        if (!amountOutWorstHuman.isFinite() || !amountOutBestHuman.isFinite()) return null
+        if (amountOutWorstHuman <= 0.0 || amountOutBestHuman <= 0.0) return null
+
+        // Only treat as USD if tokenOut is USDC (otherwise units mismatch with gasCostEstimate)
+        if (snap.tokenOut.symbol != "USDC") return null
+
         val buyPrice = amountOutWorstHuman / amountInHuman
         val sellPrice = amountOutBestHuman / amountInHuman
+        if (!buyPrice.isFinite() || !sellPrice.isFinite()) return null
 
         val rawSpread = sellPrice - buyPrice
 
-        // Gross profit in USD (since buy/sell prices are $/WETH)
-        val grossProfitUsd = rawSpread * amountInHuman
+        val grossProfit = rawSpread * amountInHuman  // in USDC ≈ USD
+        val avgNotional = ((buyPrice + sellPrice) / 2.0) * amountInHuman
+        val dexFeeLoss = 2.0 * AppConfig.dexFeeRate * avgNotional
 
-        // Approx two-leg fee model: pay fee on notional twice
-        val avgNotionalUsd = ((buyPrice + sellPrice) / 2.0) * amountInHuman
-        val dexFeeLossUsd = 2.0 * AppConfig.dexFeeRate * avgNotionalUsd
-
-        val netProfit = grossProfitUsd - dexFeeLossUsd - AppConfig.gasCostEstimate
+        val netProfit = grossProfit - dexFeeLoss - AppConfig.gasCostEstimate
+        if (!netProfit.isFinite()) return null
 
         return Opportunity(
             pair = pair,
