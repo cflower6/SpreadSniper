@@ -94,14 +94,14 @@ fun main() {
                     }
 
 
-                    sendToLoanShot(
-                        TriggerPayload(
-                            it.pair.label,
-                            0.99,
-                            1.01,
-                            0.8,
-                        )
-                    )
+//                    sendToLoanShot(
+//                        TriggerPayload(
+//                            it.pair.label,
+//                            0.99,
+//                            1.01,
+//                            0.8,
+//                        )
+//                    )
                 } catch (e: Exception) {
                     println("<UNK> Error in ${e.message}")
                 } finally {
