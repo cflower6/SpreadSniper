@@ -30,11 +30,6 @@ fun main() {
 
     val useWebSocket = AppConfig.useWebSocket && AppConfig.baseWsRpc != null
 
-    NotifierService.send(
-        subject = "sniper_find",
-        body = "TEST",
-    )
-
     if (useWebSocket) {
         logger.info("Mode: WebSocket (real-time blocks)")
         logger.info("Profit threshold: \${} | Email cooldown: {}ms",
@@ -46,7 +41,11 @@ fun main() {
     }
 
     runBlocking {
-        val dexPairs = listOf(DexPair.BASE_AERO_UNI_WETH)
+        val dexPairs = listOf(
+            DexPair.BASE_AERO_UNI_WETH,
+            DexPair.BASE_AERO_UNI_USDBC,
+            DexPair.BASE_AERO_UNI_ebETH,
+        )
         val quoters = createQuoters()
 
         if (useWebSocket) {
@@ -58,6 +57,7 @@ fun main() {
 }
 
 private fun createQuoters(): List<DexQuoter> {
+    // more up-to-date router
     val aeroQuoter = AerodromeQuoter(
         name = "AERODROME",
         router = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
