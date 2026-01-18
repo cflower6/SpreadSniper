@@ -1,7 +1,8 @@
+package services
+
 import configurations.AppConfig
 import models.DexPair
 import org.slf4j.LoggerFactory
-import services.DetectedSpread
 import utils.toHuman
 
 object TriggerService {

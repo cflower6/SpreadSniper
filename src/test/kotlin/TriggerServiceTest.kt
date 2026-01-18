@@ -1,9 +1,9 @@
 import models.DexPair
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.BeforeEach
 import registries.Token
 import services.DetectedSpread
 import services.QuoteSnapshot
+import services.TriggerService
 import java.math.BigInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

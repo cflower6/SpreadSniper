@@ -1,4 +1,4 @@
-import TriggerService.toOpportunity
+import services.TriggerService.toOpportunity
 import configurations.AppConfig
 import configurations.DotenvLoader
 import dex.AerodromeQuoter
@@ -17,6 +17,7 @@ import registries.Tokens
 import services.BlockSubscriber
 import services.Detector
 import services.NotifierService
+import services.TriggerService
 import utils.GasEstimator
 import utils.getWeb3ForChain
 
