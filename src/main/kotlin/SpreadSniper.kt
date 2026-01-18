@@ -44,7 +44,8 @@ fun main() {
         val dexPairs = listOf(
             DexPair.BASE_AERO_UNI_WETH,
             DexPair.BASE_AERO_UNI_USDBC,
-            DexPair.BASE_AERO_UNI_ebETH,
+            DexPair.BASE_AERO_UNI_cbETH,
+            DexPair.BASE_AERO_UNI_AERO,
         )
         val quoters = createQuoters()
 
@@ -112,7 +113,7 @@ private suspend fun runPollingMode(
     quoters: List<DexQuoter>
 ) {
     val web3Base = getWeb3ForChain(dexPairs.first().buyOn.chain)
-    var lastEmailMs = 0L
+    val lastEmailMs = 0L
 
     runPollingLoop(dexPairs, web3Base, quoters, lastEmailMs)
 }
