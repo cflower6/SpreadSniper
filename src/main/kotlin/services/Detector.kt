@@ -1,14 +1,18 @@
 package services
 
 import interfaces.DexQuoter
+import org.slf4j.LoggerFactory
 import org.web3j.protocol.Web3j
 import registries.Token
 import utils.currentBlockCtx
 import java.math.BigInteger
 
+private val logger = LoggerFactory.getLogger("Detector")
+
 data class QuoteSnapshot(
     val dexName: String,
     val amountOutRaw: BigInteger,
+    val feeRate: Double
 )
 
 data class DetectedSpread(
@@ -29,7 +33,7 @@ object Detector {
         quoters: List<DexQuoter>
     ): DetectedSpread? {
         val blockCtx = currentBlockCtx(web3)
-        println("🔍 Detector block = ${blockCtx.number}")
+        logger.debug("Detector block = {}", blockCtx.number)
 
         val quotes = mutableListOf<QuoteSnapshot>()
 
@@ -44,24 +48,24 @@ object Detector {
                 )
 
                 if (out == null) {
-                    println("⚠️ ${q.name} returned null")
+                    logger.warn("{} returned null", q.name)
                     continue
                 }
 
-                println("✅ ${q.name} quote = $out")
-                quotes += QuoteSnapshot(q.name, out)
+                logger.debug("{} quote = {} (fee: {}%)", q.name, out, q.feeRate * 100)
+                quotes += QuoteSnapshot(q.name, out, q.feeRate)
 
             } catch (e: Exception) {
-                println("❌ ${q.name} threw: ${e.message}")
+                logger.error("{} threw: {}", q.name, e.message)
             }
         }
 
         if (quotes.size < 2) {
-            println("🚫 Not enough quotes (${quotes.size})")
+            logger.debug("Not enough quotes ({})", quotes.size)
             return null
         }
 
-        println("<UNK> Detected spread ${quotes.size} quotes")
+        logger.debug("Detected spread with {} quotes", quotes.size)
 
         return DetectedSpread(
             tokenIn = tokenIn,

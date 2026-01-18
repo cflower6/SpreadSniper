@@ -3,20 +3,30 @@ import configurations.AppConfig
 import configurations.DotenvLoader
 import dex.AerodromeQuoter
 import dex.UniV2Quoter
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import models.DexPair
+import org.slf4j.LoggerFactory
 import registries.Tokens
 import services.Detector
 import services.EmailNotifierService
+import utils.GasEstimator
 import utils.getWeb3ForChain
+
+private val logger = LoggerFactory.getLogger("SpreadSniper")
 
 fun main() {
     DotenvLoader.load()
 
+    logger.info("SpreadSniper starting...")
+    logger.info("Polling interval: {}ms | Profit threshold: \${} | Email cooldown: {}ms",
+        AppConfig.pollingIntervalMs, AppConfig.profitThresholdUSD, AppConfig.emailCooldownMs)
+
     runBlocking {
         val threshold = AppConfig.profitThresholdUSD
-
         val dexPairs = listOf(DexPair.BASE_AERO_UNI_WETH)
 
         val aeroQuoter = AerodromeQuoter(
@@ -32,86 +42,75 @@ fun main() {
         )
 
         val quoters = listOf(aeroQuoter, uniV2Quoter)
-
         val web3Base = getWeb3ForChain(dexPairs.first().buyOn.chain)
 
         var lastEmailMs = 0L
 
-        val EMAIL_COOLDOWN_MS = 5 * 60 * 1000L // 5 minutes
-
         while (true) {
-            val found = mutableListOf<TriggerService.Opportunity>()
-            /**
-             * For each pair in our dexPairs (we can configure it more)
-             *
-             * we set the buy and set the sell chain (we set SUSHI or BASE chain)
-             *
-             * We then get the price
-             */
-            for (pair in dexPairs) {
-                try {
-                    val tokenIn = Tokens.byAddress(pair.buyOn.path.first())
-                    val tokenOut = Tokens.byAddress(pair.buyOn.path.last())
-
-                    val amountInRaw = AppConfig.tradeAmount
-
-                    val snap = Detector.detectOnce(web3Base, tokenIn, tokenOut, amountInRaw, quoters)
-
-                    if (snap == null) continue
-                    println("Detector block: ${snap.blockNumber}")
-
-                    val opp = toOpportunity(pair, snap)
-                    if (opp != null) found += opp
-
-                } catch (e: Exception) {
-                    println("Error in ${pair.label}: ${e.message}")
-                }
+            // Fetch current gas cost (dynamic or static based on config)
+            val gasCostUsd = if (AppConfig.dynamicGasEnabled) {
+                GasEstimator.estimateGasCostUsd(web3Base, AppConfig.gasLimit)
+            } else {
+                AppConfig.gasCostEstimate
             }
 
-            /**
-             * Cool kotlin thing --- because findBestOpportunity is returning an "optional" we can use let on it
-             *
-             * let executes when findBestOpportunity is not null
-             *
-             * ?: run executes when best IS null
-             */
-            TriggerService.findBestOpportunity(found, threshold)?.let {
-                try {
-                    val body = """
-                        Pair: ${it.pair.label}
-                        Spread: ${"%.5f".format(it.spread)}
-                        Est Profit: $${"%.2f".format(it.adjustedProfit)}
-                    """.trimIndent()
+            val found = detectPairsInParallel(dexPairs, web3Base, quoters, gasCostUsd)
 
-                    val now = System.currentTimeMillis()
-                    // Stopping spam :)
-                    if (now - lastEmailMs > EMAIL_COOLDOWN_MS) {
+            TriggerService.findBestOpportunity(found, threshold)?.let { opp ->
+                logger.info("Found opportunity: {} | Profit: \${}", opp.pair.label, "%.4f".format(opp.adjustedProfit))
+
+                val now = System.currentTimeMillis()
+                if (now - lastEmailMs > AppConfig.emailCooldownMs) {
+                    try {
+                        val body = """
+                            Pair: ${opp.pair.label}
+                            Spread: ${"%.5f".format(opp.spread)}
+                            Est Profit: $${"%.2f".format(opp.adjustedProfit)}
+                        """.trimIndent()
+
                         EmailNotifierService.send(
-                            subject = "🚨 SpreadSniper Opportunity",
+                            subject = "SpreadSniper Opportunity",
                             body = body
                         )
                         lastEmailMs = now
+                        logger.info("Email notification sent")
+                    } catch (e: Exception) {
+                        logger.error("Failed to send email: {}", e.message)
                     }
-
-
-//                    sendToLoanShot(
-//                        TriggerPayload(
-//                            it.pair.label,
-//                            0.99,
-//                            1.01,
-//                            0.8,
-//                        )
-//                    )
-                } catch (e: Exception) {
-                    println("<UNK> Error in ${e.message}")
-                } finally {
-                    println("🟢 Starting the LoanShot app")
+                } else {
+                    logger.debug("Email skipped (cooldown active)")
                 }
             } ?: run {
                 TriggerService.logNoOpportunities(found)
             }
 
-            delay(5000)
+            delay(AppConfig.pollingIntervalMs)
         }
     }
+}
+
+private suspend fun detectPairsInParallel(
+    dexPairs: List<DexPair>,
+    web3Base: org.web3j.protocol.Web3j,
+    quoters: List<interfaces.DexQuoter>,
+    gasCostUsd: Double
+): List<TriggerService.Opportunity> = coroutineScope {
+    dexPairs.map { pair ->
+        async {
+            try {
+                val tokenIn = Tokens.byAddress(pair.buyOn.path.first())
+                val tokenOut = Tokens.byAddress(pair.buyOn.path.last())
+                val amountInRaw = AppConfig.tradeAmount
+
+                val snap = Detector.detectOnce(web3Base, tokenIn, tokenOut, amountInRaw, quoters)
+                if (snap != null) {
+                    logger.debug("Detector block: {}", snap.blockNumber)
+                    toOpportunity(pair, snap, gasCostUsd)
+                } else null
+            } catch (e: Exception) {
+                logger.warn("Error detecting {}: {}", pair.label, e.message)
+                null
+            }
+        }
+    }.awaitAll().filterNotNull()
 }

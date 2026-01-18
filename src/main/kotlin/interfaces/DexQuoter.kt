@@ -28,6 +28,7 @@ import java.math.BigInteger
  */
 interface DexQuoter {
     val name: String
+    val feeRate: Double  // e.g., 0.003 for 0.3%
 
     fun quote(
         web3: Web3j,

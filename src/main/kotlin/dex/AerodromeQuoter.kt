@@ -15,7 +15,8 @@ class AerodromeQuoter(
     override val name: String,
     private val router: String,
     private val factory: String,
-    private val stable: Boolean // false = volatile
+    private val stable: Boolean, // false = volatile
+    override val feeRate: Double = if (stable) 0.0001 else 0.003 // 0.01% stable, 0.3% volatile
 ) : DexQuoter {
 
     class AeroRoute(from: Address, to: Address, stable: Bool, factory: Address) :

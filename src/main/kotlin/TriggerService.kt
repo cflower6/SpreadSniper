@@ -1,10 +1,11 @@
 import configurations.AppConfig
-import models.Chain
 import models.DexPair
+import org.slf4j.LoggerFactory
 import services.DetectedSpread
 import utils.toHuman
 
 object TriggerService {
+    private val logger = LoggerFactory.getLogger(TriggerService::class.java)
     /**
      * Dex pair - Decent. Exchanges
      * Buy Price - Price of crypto on the Dex
@@ -20,20 +21,6 @@ object TriggerService {
         val adjustedProfit: Double // after DEX fees + gas
     )
 
-    data class OpportunityV2(
-        val chain: Chain,              // "base"
-        val dexBuy: String,
-        val dexSell: String,
-        val tokenIn: String,
-        val tokenOut: String,
-        val amountIn: String,           // raw units as string
-        val quotedOutBuy: String,
-        val quotedOutSell: String,
-        val blockNumber: String,
-        val ttlMs: Long,
-        val minNetProfitUsd: String
-    )
-
     fun findBestOpportunity(
         opportunities: List<Opportunity>,
         minProfitUSD: Double
@@ -46,21 +33,23 @@ object TriggerService {
          * also only initiates (look at the ?.) if the previous chain is NOT null
          */
         return opportunities
-            .filter { it.adjustedProfit > minProfitUSD }
             .maxByOrNull { it.adjustedProfit }
+            ?.takeIf { it.adjustedProfit > minProfitUSD }
             ?.also {
-                println("💰 Best opportunity: ${it.pair.label}")
-                println("    ➤ Net Profit: $${"%.4f".format(it.adjustedProfit)}")
-                println("    ➤ Spread: ${"%.6f".format(it.spread)} | Buy = ${"%.6f".format(it.buyPrice)} | Sell = ${"%.6f".format(it.sellPrice)}")
+                logger.info("Best opportunity: {} | Net Profit: \${} | Spread: {} | Buy: {} | Sell: {}",
+                    it.pair.label,
+                    "%.4f".format(it.adjustedProfit),
+                    "%.6f".format(it.spread),
+                    "%.6f".format(it.buyPrice),
+                    "%.6f".format(it.sellPrice))
             }
     }
 
-    fun toOpportunity(pair: DexPair, snap: DetectedSpread): Opportunity? {
+    fun toOpportunity(pair: DexPair, snap: DetectedSpread, gasCostUsd: Double = AppConfig.gasCostEstimate): Opportunity? {
         if (snap.quotes.size < 2) return null
 
-        val sorted = snap.quotes.sortedBy { it.amountOutRaw }
-        val worst = sorted.first()
-        val best = sorted.last()
+        val worst = snap.quotes.minByOrNull { it.amountOutRaw } ?: return null
+        val best = snap.quotes.maxByOrNull { it.amountOutRaw } ?: return null
 
         val amountInHuman = toHuman(snap.amountInRaw, snap.tokenIn).toDouble()
         if (!amountInHuman.isFinite() || amountInHuman <= 0.0) return null
@@ -72,20 +61,29 @@ object TriggerService {
         if (!amountOutWorstHuman.isFinite() || !amountOutBestHuman.isFinite()) return null
         if (amountOutWorstHuman <= 0.0 || amountOutBestHuman <= 0.0) return null
 
-        // Only treat as USD if tokenOut is USDC (otherwise units mismatch with gasCostEstimate)
-        if (snap.tokenOut.symbol != "USDC") return null
+        // Only treat as USD if tokenOut is a stablecoin (otherwise units mismatch with gasCostEstimate)
+        if (snap.tokenOut.symbol !in AppConfig.stableCoins) return null
 
         val buyPrice = amountOutWorstHuman / amountInHuman
         val sellPrice = amountOutBestHuman / amountInHuman
         if (!buyPrice.isFinite() || !sellPrice.isFinite()) return null
 
+        // rawSpread = sellPrice - buyPrice = $/WETH
+        // so if buyPrice (WETH = 3100) and sellPrice (WETH = 3110) then we get the rawSpread which is 10 dollars
         val rawSpread = sellPrice - buyPrice
 
+        // the raw spread would be 10 times the amount of WETH's we bought (so let's say 5 WETH) meaning our profit is 50
         val grossProfit = rawSpread * amountInHuman  // in USDC ≈ USD
-        val avgNotional = ((buyPrice + sellPrice) / 2.0) * amountInHuman
-        val dexFeeLoss = 2.0 * AppConfig.dexFeeRate * avgNotional
 
-        val netProfit = grossProfit - dexFeeLoss - AppConfig.gasCostEstimate
+        // Per-DEX fee calculation: buy on worst DEX, sell on best DEX
+        val buyNotional = buyPrice * amountInHuman
+        val sellNotional = sellPrice * amountInHuman
+        val buyFee = worst.feeRate * buyNotional
+        val sellFee = best.feeRate * sellNotional
+        val totalDexFees = buyFee + sellFee
+
+        // our NET is the updated gross, the dexFee and the gasCost
+        val netProfit = grossProfit - totalDexFees - gasCostUsd
         if (!netProfit.isFinite()) return null
 
         return Opportunity(
@@ -100,9 +98,11 @@ object TriggerService {
 
 
     fun logNoOpportunities(opportunities: List<Opportunity>) {
-        println("🔴 No profitable opportunities found.")
-        opportunities.forEach {
-            println("    ❌ ${it.pair.label} → Spread: ${"%.6f".format(it.spread)}")
+        if (opportunities.isEmpty()) {
+            logger.debug("No opportunities detected")
+            return
         }
+        logger.debug("No profitable opportunities. Spreads: {}",
+            opportunities.joinToString { "${it.pair.label}=${"%.6f".format(it.spread)}" })
     }
 }

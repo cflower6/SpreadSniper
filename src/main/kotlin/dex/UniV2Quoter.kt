@@ -14,7 +14,8 @@ import java.math.BigInteger
 
 class UniV2Quoter(
     override val name: String,
-    private val router: String
+    private val router: String,
+    override val feeRate: Double = 0.003 // 0.3% standard Uniswap V2 fee
 ) : DexQuoter {
 
     override fun quote(
