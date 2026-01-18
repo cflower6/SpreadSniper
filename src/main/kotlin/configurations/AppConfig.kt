@@ -18,16 +18,26 @@ object AppConfig {
     val gasLimit: Long by lazy { getEnvOrNull("GAS_LIMIT")?.toLongOrNull() ?: 300_000L }
     val dynamicGasEnabled: Boolean by lazy { getEnvOrNull("DYNAMIC_GAS_ENABLED")?.toBoolean() ?: true }
 
+    // WebSocket configuration
+    val baseWsRpc: String? by lazy { getEnvOrNull("BASE_WS_RPC") }
+    val useWebSocket: Boolean by lazy { getEnvOrNull("USE_WEBSOCKET")?.toBoolean() ?: false }
+
+    // Trade execution (DANGEROUS - disabled by default)
+    val privateKey: String? by lazy { getEnvOrNull("PRIVATE_KEY") }
+    val executionEnabled: Boolean by lazy { getEnvOrNull("EXECUTION_ENABLED")?.toBoolean() ?: false }
+    val maxSlippagePct: Double by lazy { getEnvOrNull("MAX_SLIPPAGE_PCT")?.toDoubleOrNull() ?: 0.5 }
+    val minProfitForExecution: Double by lazy { getEnvOrNull("MIN_PROFIT_EXECUTION")?.toDoubleOrNull() ?: 1.0 }
+
     val tradeAmount: BigInteger by lazy {
         getEnv("TRADE_AMOUNT").toBigIntegerOrNull() ?: BigInteger("1000000000000000000")
     }
 
-    val apiKey: String by lazy { getEnv("API_KEY") }
-    val emailApiKey: String by lazy { getEnv("RESEND_API_KEY") }
-
-    val emailFrom: String by lazy { getEnv("EMAIL_FROM") }
     val emailTo: String by lazy { getEnv("EMAIL_TO") }
-    val emailPassword: String by lazy { getEnv("EMAIL_PASSWORD") }
+
+    val phoneNumber: String by lazy { getEnv("PHONE_NUMBER") }
+
+    val clientId: String by lazy { getEnv("NOTIFICATION_CLIENT_ID") }
+    val clientSecret: String by lazy { getEnv("NOTIFICATION_CLIENT_SECRET") }
 
     val stableCoins: Set<String> by lazy {
         getEnvOrNull("STABLE_COINS")
