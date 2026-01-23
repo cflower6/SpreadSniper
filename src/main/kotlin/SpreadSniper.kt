@@ -152,9 +152,11 @@ private suspend fun processOpportunities(
     }
 
     val found = detectPairsInParallel(dexPairs, web3, quoters, gasCostUsd)
+    logger.info("Found {}", found)
 
     TriggerService.findBestOpportunity(found, AppConfig.profitThresholdUSD)?.let { opp ->
         logger.info("Found opportunity: {} | Profit: \${}", opp.pair.label, "%.4f".format(opp.adjustedProfit))
+
 
         val now = System.currentTimeMillis()
         if (now - lastEmailMs > AppConfig.emailCooldownMs) {
