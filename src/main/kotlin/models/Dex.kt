@@ -4,7 +4,6 @@ enum class Dex(
     val path: List<String>,
     val chain: Chain,
 ) {
-
     AERODROME_BASE(
         path = listOf(
             "0x4200000000000000000000000000000000000006", // WETH

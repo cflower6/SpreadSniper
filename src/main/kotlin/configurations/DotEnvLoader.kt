@@ -4,7 +4,7 @@ import io.github.cdimascio.dotenv.dotenv
 
 object DotenvLoader {
     fun load(directory: String = "src/main/kotlin") {
-        // ✅ Load .env only if NOT in Railway
+        // Load .env only if NOT in Railway
         val isProd = System.getenv("RAILWAY_ENVIRONMENT") != null
 
         if (!isProd) {

@@ -16,10 +16,12 @@ import org.web3j.protocol.Web3j
 import registries.Tokens
 import services.BlockSubscriber
 import services.Detector
-import services.NotifierService
+import services.DiscordNotifierService
 import services.TriggerService
 import utils.GasEstimator
 import utils.getWeb3ForChain
+import java.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
 
 private val logger = LoggerFactory.getLogger("SpreadSniper")
 
@@ -57,6 +59,13 @@ fun main() {
     }
 }
 
+/**
+ *     UNISWAP_V3("0x2626664c2603336E57B271c5C0b26F421741e481", 0.003),
+ *     AERODROME("0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43", 0.002),
+ *     BASESWAP("0x327Df1E6de05895d2ab08513aaDD9313Fe505d86", 0.0025),
+ *     SUSHISWAP("0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891", 0.003),
+ *     SWAPBASED("0xaaa3b1F1bd7BCc97fD1917c18ADE665C5D31F066", 0.003)
+ */
 private fun createQuoters(): List<DexQuoter> {
     // more up-to-date router
     val aeroQuoter = AerodromeQuoter(
@@ -128,7 +137,7 @@ private suspend fun runPollingLoop(
 
     while (true) {
         lastEmailMs = processOpportunities(dexPairs, web3, quoters, lastEmailMs)
-        delay(AppConfig.pollingIntervalMs)
+        delay(AppConfig.pollingIntervalMs.milliseconds)
     }
 }
 
@@ -161,20 +170,24 @@ private suspend fun processOpportunities(
         val now = System.currentTimeMillis()
         if (now - lastEmailMs > AppConfig.emailCooldownMs) {
             try {
-                val body = """
-                    Pair: ${opp.pair.label}
-                    Spread: ${"%.5f".format(opp.spread)}
-                    Est Profit: $${"%.2f".format(opp.adjustedProfit)}
-                """.trimIndent()
-
-                NotifierService.send(
-                    subject = "sniper_find",
-                    body = body,
-                )
+                val msg = """
+                        🚨 ARBITRAGE DETECTED 🚨
+                        
+                        Buy: ${opp.pair.buyOn}
+                        Sell: ${opp.pair.sellOn}
+                        
+                        Token: ${opp.pair.label}
+                        
+                        Net Profit: ${opp.adjustedProfit}
+                        
+                        Spread: ${opp.spread}
+                        Time: ${Instant.now()}
+                        """.trimIndent()
+                DiscordNotifierService.send(AppConfig.discordUrl, msg)
                 newLastEmailMs = now
-                logger.info("Email notification sent")
+                logger.info("Notification to discord sent")
             } catch (e: Exception) {
-                logger.error("Failed to send email: {}", e.message)
+                logger.error("Failed to send discord: {}", e.message)
             }
         } else {
             logger.debug("Email skipped (cooldown active)")

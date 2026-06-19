@@ -23,7 +23,6 @@ data class BlockEvent(
  * Much faster than polling - triggers immediately when blocks are mined.
  */
 object BlockSubscriber {
-
     private var wsService: WebSocketService? = null
     private var web3Ws: Web3j? = null
     private var subscription: Disposable? = null

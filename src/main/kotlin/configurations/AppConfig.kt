@@ -32,12 +32,7 @@ object AppConfig {
         getEnv("TRADE_AMOUNT").toBigIntegerOrNull() ?: BigInteger("1000000000000000000")
     }
 
-    val emailTo: String by lazy { getEnv("EMAIL_TO") }
-
-    val phoneNumber: String by lazy { getEnv("PHONE_NUMBER") }
-
-    val clientId: String by lazy { getEnv("NOTIFICATION_CLIENT_ID") }
-    val clientSecret: String by lazy { getEnv("NOTIFICATION_CLIENT_SECRET") }
+    val discordUrl: String by lazy { getEnv("DISCORD_WEB_HOOK") }
 
     val stableCoins: Set<String> by lazy {
         getEnvOrNull("STABLE_COINS")
