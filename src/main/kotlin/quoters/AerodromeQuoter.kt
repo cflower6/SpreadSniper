@@ -1,16 +1,16 @@
-package dex
+package quoters
 
 import interfaces.DexQuoter
-import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.*
-import org.web3j.abi.datatypes.Function
-import org.web3j.abi.datatypes.generated.Uint256
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
 import registries.Token
-import utils.web3Helper
+import utils.Web3Utils
 import java.math.BigInteger
 
+/**
+ * Aerodrome Decentralized Exchange that implements the DexQuoter interface
+ */
 class AerodromeQuoter(
     override val name: String,
     private val router: String,
@@ -41,12 +41,6 @@ class AerodromeQuoter(
             )
         )
 
-        val function = Function(
-            "getAmountsOut",
-            listOf(Uint256(amountIn), routes),
-            listOf(object : TypeReference<DynamicArray<Uint256>>() {})
-        )
-
-        return web3Helper(function, web3, block, router)
+        return Web3Utils().web3Helper(Web3Utils().getAmountsOut(amountIn, routes), web3, block, router)
     }
 }
