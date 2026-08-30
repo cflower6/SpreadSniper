@@ -2,7 +2,7 @@ package interfaces
 
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
-import registries.Token
+import models.registries.Token
 import java.math.BigInteger
 
 /**

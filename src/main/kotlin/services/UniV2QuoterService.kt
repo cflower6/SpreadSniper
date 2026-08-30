@@ -1,4 +1,4 @@
-package quoters
+package services
 
 import interfaces.DexQuoter
 import org.web3j.abi.TypeReference
@@ -8,14 +8,14 @@ import org.web3j.abi.datatypes.Function
 import org.web3j.abi.datatypes.generated.Uint256
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
-import registries.Token
+import models.registries.Token
 import utils.Web3Utils
 import java.math.BigInteger
 
 /**
  * UniswapV2 Decentralized Exchange that implements the DexQuoter interface
  */
-class UniV2Quoter(
+class UniV2QuoterService(
     override val name: String,
     private val router: String,
     override val feeRate: Double = 0.003 // 0.3% standard Uniswap V2 fee

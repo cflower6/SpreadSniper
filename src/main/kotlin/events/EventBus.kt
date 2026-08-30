@@ -11,6 +11,7 @@ import models.ArbitrageOpportunity
 sealed interface OpportunityEvent {
     data class OpportunityFound(val data: ArbitrageOpportunity) : OpportunityEvent
     data class Notification(val data: ArbitrageOpportunity) : OpportunityEvent
+    data class ExecuteOpportunity(val data: ArbitrageOpportunity) : OpportunityEvent
 }
 
 class EventBus {

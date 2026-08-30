@@ -12,7 +12,7 @@ import models.DexPair
 import models.findBestOpportunity
 import org.slf4j.LoggerFactory
 import org.web3j.protocol.Web3j
-import registries.Tokens
+import models.registries.Tokens
 import services.DetectedSpread
 import services.Detector
 import utils.GasEstimator
@@ -48,8 +48,10 @@ class OpportunityOrchestrator(private val eventBus: EventBus) {
                 "%.6f".format(opp.sellQuote))
 
             val now = System.currentTimeMillis()
-            if (now - lastEmailMs > AppConfig.emailCooldownMs) eventBus.emit(OpportunityEvent.OpportunityFound(opp))
+            if (now - lastEmailMs > AppConfig.emailCooldownMs) eventBus.emit(OpportunityEvent.Notification(opp))
             else logger.debug("Notification event was skipped")
+            eventBus.emit(OpportunityEvent.OpportunityFound(opp))
+            eventBus.emit(OpportunityEvent.ExecuteOpportunity(opp))
         } ?: run {
             logNoOpportunities(found)
         }
@@ -127,11 +129,13 @@ class OpportunityOrchestrator(private val eventBus: EventBus) {
 
         return ArbitrageOpportunity(
             UUID.randomUUID(),
-            pair.chain.toString(),
+            pair.chain,
             snap.tokenIn.toString(),
             snap.tokenOut.toString(),
             pair.buyOn.dexName,
             pair.sellOn.dexName,
+            pair,
+            snap,
             amountInHuman,
             buyPrice,
             sellPrice,

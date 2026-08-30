@@ -3,7 +3,7 @@ package services
 import interfaces.DexQuoter
 import org.slf4j.LoggerFactory
 import org.web3j.protocol.Web3j
-import registries.Token
+import models.registries.Token
 import utils.currentBlockCtx
 import java.math.BigInteger
 

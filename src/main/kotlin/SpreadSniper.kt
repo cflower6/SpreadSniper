@@ -1,3 +1,4 @@
+import client.RedisClient
 import configurations.AppConfig
 import configurations.DotenvLoader
 import events.EventBus
@@ -10,8 +11,12 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import orchestrator.StartupOrchestrator
 import org.slf4j.LoggerFactory
+import repositories.ArbitrageExecutorRepository
+import repositories.RedisOpportunityRepository
+import services.ArbitrageExecutorService
 import services.DiscordNotifierService
-import kotlin.time.Clock
+import services.OpportunityCacheListener
+import utils.messageBuilder
 import kotlin.time.ExperimentalTime
 
 private val logger = LoggerFactory.getLogger("SpreadSniper")
@@ -28,30 +33,44 @@ fun main() {
     val appScope = CoroutineScope(Dispatchers.Default + Job())
 
     logger.info("Started listening on ${appScope.coroutineContext.job}.")
+    // Launch thread to start listening for Notification Events
     appScope.launch {
         eventBus.events.collect { event ->
             if (event is OpportunityEvent.Notification) {
                 println("[Notification listener] Acted on event: ${event.data}")
-                val opportunity = event.data
-                val msg = """
-                        🚨 ARBITRAGE DETECTED 🚨
-
-                        Buy: ${opportunity.buyDex}
-                        Sell: ${opportunity.sellDex}
-
-                        TokenIn: ${opportunity.tokenIn}
-                        TokenOut: ${opportunity.tokenOut}
-
-                        Net Profit: ${opportunity.estimatedNetProfitUsd}
-
-                        Spread: ${opportunity.grossSpreadBps}
-                        Time: ${Clock.System.now()}
-                        """.trimIndent()
                 try {
-                    DiscordNotifierService.send(AppConfig.discordUrl,msg)
+                    DiscordNotifierService.send(AppConfig.discordUrl, messageBuilder(event.data))
                     logger.info("[Notification listener] Successfully sent event: $event")
                 } catch (e: Exception) {
                     logger.error("Failed to send discord: {}", e.message)
+                }
+            }
+        }
+    }
+    // Launch thread to start listening for Redis Events
+    appScope.launch {
+        eventBus.events.collect { event ->
+            if (event is OpportunityEvent.OpportunityFound) {
+                logger.info("[Redis listener] Found event: $event")
+                try {
+                    OpportunityCacheListener(RedisOpportunityRepository(RedisClient())).handle(event)
+                    logger.info("[Redis listener] Successfully sent event: $event")
+                } catch (e: Exception) {
+                    logger.error("Failed to update redis cache: {}", e.message)
+                }
+            }
+        }
+    }
+    // Launch thread to start listening for Executor Events
+    appScope.launch {
+        eventBus.events.collect { event ->
+            if (event is OpportunityEvent.ExecuteOpportunity) {
+                logger.info("[Executor listener] Found event: $event")
+                try {
+                    ArbitrageExecutorService(ArbitrageExecutorRepository()).execute(event.data)
+                    logger.info("[ArbitrageExecutorRepository] Successfully sent event: $event")
+                } catch (e: Exception) {
+                    logger.error("Failed to execute Arbitrage: {}", e.message)
                 }
             }
         }
