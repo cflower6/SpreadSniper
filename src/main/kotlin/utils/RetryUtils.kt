@@ -2,6 +2,7 @@ package utils
 
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration.Companion.milliseconds
 
 private val logger = LoggerFactory.getLogger("RetryUtils")
 
@@ -39,7 +40,7 @@ suspend fun <T> withRetry(
 
             if (attempt < maxAttempts - 1) {
                 logger.debug("Attempt {} failed, retrying in {}ms: {}", attempt + 1, currentDelay, e.message)
-                delay(currentDelay)
+                delay(currentDelay.milliseconds)
                 currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelayMs)
             }
         }

@@ -1,226 +1,68 @@
-import services.TriggerService.toOpportunity
 import configurations.AppConfig
 import configurations.DotenvLoader
-import dex.AerodromeQuoter
-import dex.UniV2Quoter
-import interfaces.DexQuoter
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.runBlocking
-import models.DexPair
+import events.EventBus
+import events.OpportunityEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import orchestrator.StartupOrchestrator
 import org.slf4j.LoggerFactory
-import org.web3j.protocol.Web3j
-import registries.Tokens
-import services.BlockSubscriber
-import services.Detector
 import services.DiscordNotifierService
-import services.TriggerService
-import utils.GasEstimator
-import utils.getWeb3ForChain
-import java.time.Instant
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 private val logger = LoggerFactory.getLogger("SpreadSniper")
 
+@OptIn(ExperimentalTime::class)
 fun main() {
+    logger.info("Loading in environment variables...")
     DotenvLoader.load()
+    logger.info("Loaded environment")
 
-    logger.info("SpreadSniper starting...")
+    val eventBus = EventBus()
 
-    val useWebSocket = AppConfig.useWebSocket && AppConfig.baseWsRpc != null
+    // Create a standalone application scope to handle background listeners
+    val appScope = CoroutineScope(Dispatchers.Default + Job())
 
-    if (useWebSocket) {
-        logger.info("Mode: WebSocket (real-time blocks)")
-        logger.info("Profit threshold: \${} | Email cooldown: {}ms",
-            AppConfig.profitThresholdUSD, AppConfig.emailCooldownMs)
-    } else {
-        logger.info("Mode: Polling (interval: {}ms)", AppConfig.pollingIntervalMs)
-        logger.info("Profit threshold: \${} | Email cooldown: {}ms",
-            AppConfig.profitThresholdUSD, AppConfig.emailCooldownMs)
-    }
-
-    runBlocking {
-        val dexPairs = listOf(
-            DexPair.BASE_AERO_UNI_WETH,
-            DexPair.BASE_AERO_UNI_USDBC,
-            DexPair.BASE_AERO_UNI_cbETH,
-            DexPair.BASE_AERO_UNI_AERO,
-        )
-        val quoters = createQuoters()
-
-        if (useWebSocket) {
-            runWebSocketMode(dexPairs, quoters)
-        } else {
-            runPollingMode(dexPairs, quoters)
-        }
-    }
-}
-
-/**
- *     UNISWAP_V3("0x2626664c2603336E57B271c5C0b26F421741e481", 0.003),
- *     AERODROME("0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43", 0.002),
- *     BASESWAP("0x327Df1E6de05895d2ab08513aaDD9313Fe505d86", 0.0025),
- *     SUSHISWAP("0x6BDED42c6DA8FBf0d2bA55B2fa120C5e0c8D7891", 0.003),
- *     SWAPBASED("0xaaa3b1F1bd7BCc97fD1917c18ADE665C5D31F066", 0.003)
- */
-private fun createQuoters(): List<DexQuoter> {
-    // more up-to-date router
-    val aeroQuoter = AerodromeQuoter(
-        name = "AERODROME",
-        router = "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-        factory = "0x420dd381b31aef6683db6b902084cb0ffece40da",
-        stable = false
-    )
-
-    val uniV2Quoter = UniV2Quoter(
-        name = "UNIV2",
-        router = "0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24"
-    )
-
-    return listOf(aeroQuoter, uniV2Quoter)
-}
-
-/**
- * WebSocket mode: Subscribe to new blocks and detect on each block.
- * Lower latency than polling - reacts immediately to new blocks.
- */
-private suspend fun runWebSocketMode(
-    dexPairs: List<DexPair>,
-    quoters: List<DexQuoter>
-) {
-    val wsUrl = AppConfig.baseWsRpc ?: error("BASE_WS_RPC not configured")
-    var lastEmailMs = 0L
-
-    logger.info("Subscribing to blocks via WebSocket...")
-
-    BlockSubscriber.subscribeNewBlocks(wsUrl)
-        .catch { e ->
-            logger.error("WebSocket error, falling back to polling: {}", e.message)
-            // Fallback to polling mode
-            val web3 = getWeb3ForChain(dexPairs.first().buyOn.chain)
-            runPollingLoop(dexPairs, web3, quoters, lastEmailMs)
-        }
-        .collect { blockEvent ->
-            logger.debug("Processing block {}", blockEvent.number)
-
-            // Use the WebSocket-connected Web3j for RPC calls
-            val web3 = BlockSubscriber.getWeb3() ?: getWeb3ForChain(dexPairs.first().buyOn.chain)
-
-            lastEmailMs = processOpportunities(dexPairs, web3, quoters, lastEmailMs)
-        }
-}
-
-/**
- * Polling mode: Check prices at fixed intervals.
- * More reliable but higher latency than WebSocket.
- */
-private suspend fun runPollingMode(
-    dexPairs: List<DexPair>,
-    quoters: List<DexQuoter>
-) {
-    val web3Base = getWeb3ForChain(dexPairs.first().buyOn.chain)
-    val lastEmailMs = 0L
-
-    runPollingLoop(dexPairs, web3Base, quoters, lastEmailMs)
-}
-
-private suspend fun runPollingLoop(
-    dexPairs: List<DexPair>,
-    web3: Web3j,
-    quoters: List<DexQuoter>,
-    initialLastEmailMs: Long
-) {
-    var lastEmailMs = initialLastEmailMs
-
-    while (true) {
-        lastEmailMs = processOpportunities(dexPairs, web3, quoters, lastEmailMs)
-        delay(AppConfig.pollingIntervalMs.milliseconds)
-    }
-}
-
-/**
- * Core opportunity detection and notification logic.
- * Shared between WebSocket and polling modes.
- */
-private suspend fun processOpportunities(
-    dexPairs: List<DexPair>,
-    web3: Web3j,
-    quoters: List<DexQuoter>,
-    lastEmailMs: Long
-): Long {
-    var newLastEmailMs = lastEmailMs
-
-    // Fetch current gas cost
-    val gasCostUsd = if (AppConfig.dynamicGasEnabled) {
-        GasEstimator.estimateGasCostUsd(web3, AppConfig.gasLimit)
-    } else {
-        AppConfig.gasCostEstimate
-    }
-
-    val found = detectPairsInParallel(dexPairs, web3, quoters, gasCostUsd)
-    logger.info("Found {}", found)
-
-    TriggerService.findBestOpportunity(found, AppConfig.profitThresholdUSD)?.let { opp ->
-        logger.info("Found opportunity: {} | Profit: \${}", opp.pair.label, "%.4f".format(opp.adjustedProfit))
-
-
-        val now = System.currentTimeMillis()
-        if (now - lastEmailMs > AppConfig.emailCooldownMs) {
-            try {
+    logger.info("Started listening on ${appScope.coroutineContext.job}.")
+    appScope.launch {
+        eventBus.events.collect { event ->
+            if (event is OpportunityEvent.Notification) {
+                println("[Notification listener] Acted on event: ${event.data}")
+                val opportunity = event.data
                 val msg = """
                         🚨 ARBITRAGE DETECTED 🚨
-                        
-                        Buy: ${opp.pair.buyOn}
-                        Sell: ${opp.pair.sellOn}
-                        
-                        Token: ${opp.pair.label}
-                        
-                        Net Profit: ${opp.adjustedProfit}
-                        
-                        Spread: ${opp.spread}
-                        Time: ${Instant.now()}
+
+                        Buy: ${opportunity.buyDex}
+                        Sell: ${opportunity.sellDex}
+
+                        TokenIn: ${opportunity.tokenIn}
+                        TokenOut: ${opportunity.tokenOut}
+
+                        Net Profit: ${opportunity.estimatedNetProfitUsd}
+
+                        Spread: ${opportunity.grossSpreadBps}
+                        Time: ${Clock.System.now()}
                         """.trimIndent()
-                DiscordNotifierService.send(AppConfig.discordUrl, msg)
-                newLastEmailMs = now
-                logger.info("Notification to discord sent")
-            } catch (e: Exception) {
-                logger.error("Failed to send discord: {}", e.message)
+                try {
+                    DiscordNotifierService.send(AppConfig.discordUrl,msg)
+                    logger.info("[Notification listener] Successfully sent event: $event")
+                } catch (e: Exception) {
+                    logger.error("Failed to send discord: {}", e.message)
+                }
             }
-        } else {
-            logger.debug("Email skipped (cooldown active)")
         }
-    } ?: run {
-        TriggerService.logNoOpportunities(found)
     }
 
-    return newLastEmailMs
+    logger.info("Initializing start up orchestrator...")
+    StartupOrchestrator(eventBus).startUp()
+
+    // Block main slightly at the very end to give the background threads time to log output
+    Thread.sleep(2000)
+    logger.info("[Main] System execution complete.")
+    appScope.cancel() // Cleanup resources
 }
 
-private suspend fun detectPairsInParallel(
-    dexPairs: List<DexPair>,
-    web3: Web3j,
-    quoters: List<DexQuoter>,
-    gasCostUsd: Double
-): List<TriggerService.Opportunity> = coroutineScope {
-    dexPairs.map { pair ->
-        async {
-            try {
-                val tokenIn = Tokens.byAddress(pair.buyOn.path.first())
-                val tokenOut = Tokens.byAddress(pair.buyOn.path.last())
-                val amountInRaw = AppConfig.tradeAmount
-
-                val snap = Detector.detectOnce(web3, tokenIn, tokenOut, amountInRaw, quoters)
-                if (snap != null) {
-                    logger.debug("Detector block: {}", snap.blockNumber)
-                    toOpportunity(pair, snap, gasCostUsd)
-                } else null
-            } catch (e: Exception) {
-                logger.warn("Error detecting {}: {}", pair.label, e.message)
-                null
-            }
-        }
-    }.awaitAll().filterNotNull()
-}

@@ -1,4 +1,4 @@
-package dex
+package quoters
 
 import interfaces.DexQuoter
 import org.web3j.abi.TypeReference
@@ -9,9 +9,12 @@ import org.web3j.abi.datatypes.generated.Uint256
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
 import registries.Token
-import utils.web3Helper
+import utils.Web3Utils
 import java.math.BigInteger
 
+/**
+ * UniswapV2 Decentralized Exchange that implements the DexQuoter interface
+ */
 class UniV2Quoter(
     override val name: String,
     private val router: String,
@@ -30,11 +33,14 @@ class UniV2Quoter(
             "getAmountsOut",
             listOf(
                 Uint256(amountIn),
-                DynamicArray(Address::class.java, listOf(Address(tokenIn.address), Address(tokenOut.address)))
+                DynamicArray(
+                    Address::class.java,
+                    listOf(Address(tokenIn.address), Address(tokenOut.address))
+                )
             ),
             listOf(object : TypeReference<DynamicArray<Uint256>>() {})
         )
 
-        return web3Helper(function, web3, block, router)
+        return Web3Utils().web3Helper(function, web3, block, router)
     }
 }
