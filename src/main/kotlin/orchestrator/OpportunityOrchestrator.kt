@@ -48,8 +48,10 @@ class OpportunityOrchestrator(private val eventBus: EventBus) {
                 "%.6f".format(opp.sellQuote))
 
             val now = System.currentTimeMillis()
-            if (now - lastEmailMs > AppConfig.emailCooldownMs) eventBus.emit(OpportunityEvent.OpportunityFound(opp))
+            if (now - lastEmailMs > AppConfig.emailCooldownMs) eventBus.emit(OpportunityEvent.Notification(opp))
             else logger.debug("Notification event was skipped")
+            eventBus.emit(OpportunityEvent.OpportunityFound(opp))
+            eventBus.emit(OpportunityEvent.ExecuteOpportunity(opp))
         } ?: run {
             logNoOpportunities(found)
         }
