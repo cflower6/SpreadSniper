@@ -1,4 +1,4 @@
-package registries
+package models.registries
 
 data class Token(
     val symbol: String,

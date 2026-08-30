@@ -1,6 +1,8 @@
 package models
 
+import services.DetectedSpread
 import java.math.BigInteger
+import java.security.MessageDigest
 import java.util.UUID
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
@@ -23,11 +25,14 @@ data class Opportunity(
 
 data class ArbitrageOpportunity @OptIn(ExperimentalTime::class) constructor(
     val id: UUID,
-    val chain: String,
+    val chain: Chain,
     val tokenIn: String,
     val tokenOut: String,
     val buyDex: String,
     val sellDex: String,
+
+    val pair: DexPair,
+    val snapshot: DetectedSpread,
 
     val amountIn: Double,
 
@@ -43,7 +48,37 @@ data class ArbitrageOpportunity @OptIn(ExperimentalTime::class) constructor(
 
     val blockNumber: BigInteger,
     val observedAt: Instant
+) {
+    val opportunityKey: OpportunityKey = OpportunityKey(
+        generateOpportunityKey()
+    )
+
+    private fun generateOpportunityKey(): String {
+        val raw = listOf(
+            blockNumber,
+            tokenIn.lowercase(),
+            tokenOut.lowercase(),
+            buyDex.lowercase(),
+            sellDex.lowercase(),
+            amountIn.toString()
+        ).joinToString(":")
+
+        return MessageDigest
+            .getInstance("SHA-256")
+            .digest(raw.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+}
+
+@JvmInline
+value class OpportunityKey(
+    val value: String
 )
+
+/**
+ * Creates a key that helps with idempotency - we don't want events to hit twice for our execution bot
+ */
+
 
 
 fun findBestOpportunity(

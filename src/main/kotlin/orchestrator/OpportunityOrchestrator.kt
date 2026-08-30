@@ -12,7 +12,7 @@ import models.DexPair
 import models.findBestOpportunity
 import org.slf4j.LoggerFactory
 import org.web3j.protocol.Web3j
-import registries.Tokens
+import models.registries.Tokens
 import services.DetectedSpread
 import services.Detector
 import utils.GasEstimator
@@ -127,11 +127,13 @@ class OpportunityOrchestrator(private val eventBus: EventBus) {
 
         return ArbitrageOpportunity(
             UUID.randomUUID(),
-            pair.chain.toString(),
+            pair.chain,
             snap.tokenIn.toString(),
             snap.tokenOut.toString(),
             pair.buyOn.dexName,
             pair.sellOn.dexName,
+            pair,
+            snap,
             amountInHuman,
             buyPrice,
             sellPrice,

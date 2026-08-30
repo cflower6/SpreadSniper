@@ -5,7 +5,7 @@ import models.Chain
 import org.slf4j.LoggerFactory
 import org.web3j.abi.FunctionEncoder
 import org.web3j.abi.FunctionReturnDecoder
-import quoters.AerodromeQuoter.AeroRoute
+import services.AerodromeQuoterService.AeroRoute
 import org.web3j.abi.TypeReference
 import org.web3j.abi.datatypes.DynamicArray
 import org.web3j.abi.datatypes.Function
@@ -15,7 +15,7 @@ import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
 import org.web3j.protocol.core.methods.request.Transaction
 import org.web3j.protocol.http.HttpService
-import registries.Token
+import models.registries.Token
 import java.io.IOException
 import java.math.BigDecimal
 import java.math.BigInteger

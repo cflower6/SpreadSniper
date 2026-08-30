@@ -1,17 +1,20 @@
-package quoters
+package services
 
 import interfaces.DexQuoter
-import org.web3j.abi.datatypes.*
+import org.web3j.abi.datatypes.Address
+import org.web3j.abi.datatypes.Bool
+import org.web3j.abi.datatypes.DynamicArray
+import org.web3j.abi.datatypes.StaticStruct
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.DefaultBlockParameter
-import registries.Token
+import models.registries.Token
 import utils.Web3Utils
 import java.math.BigInteger
 
 /**
  * Aerodrome Decentralized Exchange that implements the DexQuoter interface
  */
-class AerodromeQuoter(
+class AerodromeQuoterService(
     override val name: String,
     private val router: String,
     private val factory: String,
