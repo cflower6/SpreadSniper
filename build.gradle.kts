@@ -22,6 +22,8 @@ dependencies {
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
     implementation("com.sun.mail:jakarta.mail:2.0.1")
     implementation("com.notificationapi:notificationapi-java-server-sdk:0.3.0")
+    implementation("io.lettuce:lettuce-core:6.8.1.RELEASE")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Logging
     implementation("org.slf4j:slf4j-api:2.0.9")

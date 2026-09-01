@@ -1,5 +1,6 @@
 package utils
 
+import infrastructure.blockchain.GasEstimator
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Test

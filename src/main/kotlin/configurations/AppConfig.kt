@@ -1,12 +1,46 @@
 package configurations
 
-import java.math.BigInteger
-
 object AppConfig {
     val ethereumRpc: String by lazy { getEnv("ETHEREUM_RPC") }
     val baseRpc: String by lazy { getEnv("BASE_RPC") }
     val loanshotUrl: String by lazy {getEnv("LOANSHOT_URL")}
     val arbitrumRpc: String by lazy { getEnv("ARBITRUM_RPC") }
+
+    // Redis
+    val redisUrl: String by lazy {
+        getEnvOrNull("REDIS_URL")
+            ?: "redis://localhost:6379"
+    }
+
+    val executionClaimTtlSeconds: Long by lazy {
+        getEnvOrNull("EXECUTION_CLAIM_TTL_SECONDS")
+            ?.toLongOrNull()
+            ?: 120L
+    }
+
+    // Scanner optimization
+
+    val prefilterMinSpreadBps: Double by lazy {
+        getEnvOrNull("PREFILTER_MIN_SPREAD_BPS")
+            ?.toDoubleOrNull()
+            ?: 5.0
+    }
+
+    val maxPriceImpactBps: Double by lazy {
+        getEnvOrNull("MAX_PRICE_IMPACT_BPS")
+            ?.toDoubleOrNull()
+            ?: 100.0
+    }
+
+    val probeSizeUsd: String by lazy {
+        getEnvOrNull("PROBE_SIZE_USD")
+            ?: "10"
+    }
+
+    val probeSizeWeth: String by lazy {
+        getEnvOrNull("PROBE_SIZE_WETH")
+            ?: "0.01"
+    }
 
     val gasCostEstimate: Double by lazy { getEnvOrNull("GAS_COST_ESTIMATE")?.toDoubleOrNull() ?: 0.25 }
     val profitThresholdUSD: Double by lazy { getEnvOrNull("PROFIT_THRESHOLD")?.toDoubleOrNull() ?: 0.5 }
@@ -28,8 +62,22 @@ object AppConfig {
     val maxSlippagePct: Double by lazy { getEnvOrNull("MAX_SLIPPAGE_PCT")?.toDoubleOrNull() ?: 0.5 }
     val minProfitForExecution: Double by lazy { getEnvOrNull("MIN_PROFIT_EXECUTION")?.toDoubleOrNull() ?: 1.0 }
 
-    val tradeAmount: BigInteger by lazy {
-        getEnv("TRADE_AMOUNT").toBigIntegerOrNull() ?: BigInteger("1000000000000000000")
+    val tradeSizes: List<String> by lazy {
+        getEnvOrNull("TRADE_SIZES")
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: listOf(
+                "0.001",
+                "0.005",
+                "0.01",
+                "0.025",
+                "0.05",
+                "0.1",
+                "0.25",
+                "0.5",
+                "1.0"
+            )
     }
 
     val discordUrl: String by lazy { getEnv("DISCORD_WEB_HOOK") }
