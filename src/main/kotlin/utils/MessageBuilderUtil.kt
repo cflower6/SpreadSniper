@@ -1,24 +1,63 @@
 package utils
 
-import models.ArbitrageOpportunity
-import kotlin.time.Clock
+import domain.models.ArbitrageOpportunity
+import infrastructure.blockchain.Web3Utils
 import kotlin.time.ExperimentalTime
 
 @OptIn(ExperimentalTime::class)
-fun messageBuilder(opportunity: ArbitrageOpportunity): String {
-    val msg = """
-                        🚨 ARBITRAGE DETECTED 🚨
+fun messageBuilder(
+    opportunity: ArbitrageOpportunity
+): String {
 
-                        Buy: ${opportunity.buyDex}
-                        Sell: ${opportunity.sellDex}
+    val firstLeg = opportunity.firstLeg
+    val secondLeg = opportunity.secondLeg
 
-                        TokenIn: ${opportunity.tokenIn}
-                        TokenOut: ${opportunity.tokenOut}
+    val firstAmountIn =
+        Web3Utils()
+            .toHuman(
+                firstLeg.amountInRaw,
+                firstLeg.tokenIn
+            )
 
-                        Net Profit: ${opportunity.estimatedNetProfitUsd}
+    val firstAmountOut =
+        Web3Utils()
+            .toHuman(
+                firstLeg.amountOutRaw,
+                firstLeg.tokenOut
+            )
 
-                        Spread: ${opportunity.grossSpreadBps}
-                        Time: ${Clock.System.now()}
-                        """.trimIndent()
-    return msg
+    val secondAmountOut =
+        Web3Utils()
+            .toHuman(
+                secondLeg.amountOutRaw,
+                secondLeg.tokenOut
+            )
+
+    return """
+        🚨 ARBITRAGE DETECTED 🚨
+
+        Chain: ${opportunity.chain}
+        Pair: ${opportunity.pair.label}
+
+        Route:
+        ${firstLeg.dex}: ${firstLeg.tokenIn.symbol} → ${firstLeg.tokenOut.symbol}
+        ${secondLeg.dex}: ${secondLeg.tokenIn.symbol} → ${secondLeg.tokenOut.symbol}
+
+        Trade:
+        $firstAmountIn ${firstLeg.tokenIn.symbol}
+        → $firstAmountOut ${firstLeg.tokenOut.symbol}
+        → $secondAmountOut ${secondLeg.tokenOut.symbol}
+
+        Gross Profit: $${"%.4f".format(opportunity.grossProfitUsd)}
+        Est. Fees: $${"%.4f".format(opportunity.estimatedFeesUsd)}
+        Est. Gas: $${"%.4f".format(opportunity.estimatedGasUsd)}
+        Net Profit: $${"%.4f".format(opportunity.estimatedNetProfitUsd)}
+
+        Spread: ${"%.2f".format(opportunity.grossSpreadBps)} bps
+
+        Block: ${opportunity.blockNumber}
+        Observed: ${opportunity.observedAt}
+
+        Opportunity: ${opportunity.opportunityKey.value.take(12)}...
+    """.trimIndent()
 }

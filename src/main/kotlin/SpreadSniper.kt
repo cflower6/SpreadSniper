@@ -1,87 +1,393 @@
+import application.executor.ArbitrageExecutor
+import application.executor.ExecutionEvaluator
+import application.listeners.OpportunityCacheListener
+import application.orchestrator.StartupOrchestrator
 import client.RedisClient
 import configurations.AppConfig
+import configurations.DexConfigurations
 import configurations.DotenvLoader
-import events.EventBus
-import events.OpportunityEvent
+import domain.events.EventBus
+import domain.events.OpportunityEvent
+import domain.models.Chain
+import domain.models.Dex
+import domain.models.registries.PoolRegistry
+import infrastructure.blockchain.Web3Utils
+import infrastructure.dex.AerodromePoolResolver
+import infrastructure.dex.UniV2PoolResolver
+import infrastructure.execution.RouterRegistry
+import infrastructure.execution.TradeExecutor
+import infrastructure.execution.WalletFundedArbitrageExecutionStrategy
+import infrastructure.notification.DiscordNotifierService
+import infrastructure.redis.RedisExecutionIdempotencyStore
+import infrastructure.redis.RedisOpportunityRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import orchestrator.StartupOrchestrator
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
-import repositories.ArbitrageExecutorRepository
-import repositories.RedisOpportunityRepository
-import services.ArbitrageExecutorService
-import services.DiscordNotifierService
-import services.OpportunityCacheListener
 import utils.messageBuilder
 import kotlin.time.ExperimentalTime
 
-private val logger = LoggerFactory.getLogger("SpreadSniper")
+private val logger =
+    LoggerFactory.getLogger("SpreadSniper")
 
 @OptIn(ExperimentalTime::class)
-fun main() {
-    logger.info("Loading in environment variables...")
+fun main() = runBlocking {
+
+    logger.info("Loading environment variables...")
     DotenvLoader.load()
-    logger.info("Loaded environment")
+    logger.info("Environment loaded.")
 
-    val eventBus = EventBus()
+    /*
+     * ======================================================
+     * SHARED INFRASTRUCTURE
+     * ======================================================
+     */
 
-    // Create a standalone application scope to handle background listeners
-    val appScope = CoroutineScope(Dispatchers.Default + Job())
+    val web3Utils =
+        Web3Utils()
 
-    logger.info("Started listening on ${appScope.coroutineContext.job}.")
-    // Launch thread to start listening for Notification Events
+    val baseWeb3 =
+        web3Utils.getWeb3ForChain(
+            Chain.BASE
+        )
+
+    /*
+     * ======================================================
+     * DEX CONFIGURATION
+     * ======================================================
+     */
+
+    val aerodromeConfig =
+        DexConfigurations.get(
+            chain = Chain.BASE,
+            dex = Dex.AERODROME
+        )
+
+    val uniswapConfig =
+        DexConfigurations.get(
+            chain = Chain.BASE,
+            dex = Dex.UNISWAP
+        )
+
+    /*
+     * ======================================================
+     * POOL DISCOVERY
+     * ======================================================
+     */
+
+    val poolRegistry =
+        PoolRegistry(
+            resolvers = listOf(
+                AerodromePoolResolver(
+                    web3 = baseWeb3,
+                    factoryAddress =
+                        aerodromeConfig.factoryAddress
+                            ?: error(
+                                "Aerodrome factory missing"
+                            )
+                ),
+
+                UniV2PoolResolver(
+                    web3 = baseWeb3,
+                    factoryAddress =
+                        uniswapConfig.factoryAddress
+                            ?: error(
+                                "Uniswap factory missing"
+                            )
+                )
+            )
+        )
+
+    /*
+     * ======================================================
+     * REDIS
+     * ======================================================
+     */
+
+    val redisClient =
+        RedisClient(
+            redisUrl = AppConfig.redisUrl
+        )
+
+    val opportunityRepository =
+        RedisOpportunityRepository(
+            redisClient = redisClient
+        )
+
+    val executionIdempotencyStore =
+        RedisExecutionIdempotencyStore(
+            redis = redisClient,
+            ttlSeconds =
+                AppConfig.executionClaimTtlSeconds
+        )
+
+    /*
+     * ======================================================
+     * EXECUTION INFRASTRUCTURE
+     * ======================================================
+     */
+
+    val routerRegistry =
+        RouterRegistry()
+
+    val executionEvaluator =
+        ExecutionEvaluator()
+
+    // Initialize wallet credentials once at application startup.
+    if (AppConfig.executionEnabled) {
+
+        logger.info("Initializing trade executor...")
+
+        val initialized =
+            TradeExecutor.initialize()
+
+        if (!initialized) {
+            logger.error(
+                "Trade execution is enabled, but TradeExecutor failed to initialize"
+            )
+
+            error(
+                "Cannot start with EXECUTION_ENABLED=true without a valid wallet"
+            )
+        }
+
+        logger.info(
+            "Trade executor initialized successfully"
+        )
+
+    } else {
+        logger.info(
+            "Trade execution disabled - running in dry-run mode"
+        )
+    }
+
+    val executionStrategy =
+        WalletFundedArbitrageExecutionStrategy(
+            web3Utils = web3Utils,
+            routerRegistry = routerRegistry,
+            tradeExecutor = TradeExecutor
+        )
+
+    val arbitrageExecutor =
+        ArbitrageExecutor(
+            executionEvaluator = executionEvaluator,
+            executionStrategy = executionStrategy,
+            idempotencyStore = executionIdempotencyStore
+        )
+
+    /*
+     * ======================================================
+     * APPLICATION SERVICES
+     * ======================================================
+     */
+
+    val eventBus =
+        EventBus()
+
+    val opportunityCacheListener =
+        OpportunityCacheListener(
+            opportunityRepository
+        )
+
+    val startupOrchestrator =
+        StartupOrchestrator(
+            eventBus = eventBus,
+            poolRegistry = poolRegistry
+        )
+
+    /*
+     * ======================================================
+     * EVENT CONSUMERS
+     * ======================================================
+     */
+
+    val appScope =
+        CoroutineScope(
+            SupervisorJob() +
+                    Dispatchers.Default
+        )
+
+    logger.info(
+        "Starting SpreadSniper event consumers..."
+    )
+
+    /*
+     * ------------------------------------------------------
+     * NOTIFICATION CONSUMER
+     * ------------------------------------------------------
+     */
+
     appScope.launch {
+
         eventBus.events.collect { event ->
-            if (event is OpportunityEvent.Notification) {
-                println("[Notification listener] Acted on event: ${event.data}")
-                try {
-                    DiscordNotifierService.send(AppConfig.discordUrl, messageBuilder(event.data))
-                    logger.info("[Notification listener] Successfully sent event: $event")
-                } catch (e: Exception) {
-                    logger.error("Failed to send discord: {}", e.message)
-                }
+
+            if (
+                event !is OpportunityEvent.Notification
+            ) {
+                return@collect
+            }
+
+            val opportunity =
+                event.data
+
+            logger.info(
+                "[Notification] Received {}",
+                opportunity.opportunityKey.value
+            )
+
+            try {
+
+                DiscordNotifierService.send(
+                    AppConfig.discordUrl,
+                    messageBuilder(opportunity)
+                )
+
+                logger.info(
+                    "[Notification] Sent {}",
+                    opportunity.opportunityKey.value
+                )
+
+            } catch (e: Exception) {
+
+                logger.error(
+                    "[Notification] Failed {}: {}",
+                    opportunity.opportunityKey.value,
+                    e.message,
+                    e
+                )
             }
         }
     }
-    // Launch thread to start listening for Redis Events
+
+    /*
+     * ------------------------------------------------------
+     * REDIS CACHE CONSUMER
+     * ------------------------------------------------------
+     */
+
     appScope.launch {
+
         eventBus.events.collect { event ->
-            if (event is OpportunityEvent.OpportunityFound) {
-                logger.info("[Redis listener] Found event: $event")
-                try {
-                    OpportunityCacheListener(RedisOpportunityRepository(RedisClient())).handle(event)
-                    logger.info("[Redis listener] Successfully sent event: $event")
-                } catch (e: Exception) {
-                    logger.error("Failed to update redis cache: {}", e.message)
-                }
+
+            if (
+                event !is OpportunityEvent.OpportunityFound
+            ) {
+                return@collect
             }
-        }
-    }
-    // Launch thread to start listening for Executor Events
-    appScope.launch {
-        eventBus.events.collect { event ->
-            if (event is OpportunityEvent.ExecuteOpportunity) {
-                logger.info("[Executor listener] Found event: $event")
-                try {
-                    ArbitrageExecutorService(ArbitrageExecutorRepository()).execute(event.data)
-                    logger.info("[ArbitrageExecutorRepository] Successfully sent event: $event")
-                } catch (e: Exception) {
-                    logger.error("Failed to execute Arbitrage: {}", e.message)
-                }
+
+            val opportunity =
+                event.data
+
+            logger.info(
+                "[Cache] Received {}",
+                opportunity.opportunityKey.value
+            )
+
+            try {
+
+                opportunityCacheListener
+                    .handle(event)
+
+                logger.info(
+                    "[Cache] Stored {}",
+                    opportunity.opportunityKey.value
+                )
+
+            } catch (e: Exception) {
+
+                logger.error(
+                    "[Cache] Failed {}: {}",
+                    opportunity.opportunityKey.value,
+                    e.message,
+                    e
+                )
             }
         }
     }
 
-    logger.info("Initializing start up orchestrator...")
-    StartupOrchestrator(eventBus).startUp()
+    /*
+     * ------------------------------------------------------
+     * EXECUTION CONSUMER
+     * ------------------------------------------------------
+     */
 
-    // Block main slightly at the very end to give the background threads time to log output
-    Thread.sleep(2000)
-    logger.info("[Main] System execution complete.")
-    appScope.cancel() // Cleanup resources
+    appScope.launch {
+
+        eventBus.events.collect { event ->
+
+            if (
+                event !is OpportunityEvent.ExecuteOpportunity
+            ) {
+                return@collect
+            }
+
+            val opportunity =
+                event.data
+
+            logger.info(
+                "[Executor] Received {}",
+                opportunity.opportunityKey.value
+            )
+
+            try {
+
+                val result =
+                    arbitrageExecutor.execute(
+                        opportunity
+                    )
+
+                logger.info(
+                    "[Executor] Result {} -> {}",
+                    opportunity.opportunityKey.value,
+                    result
+                )
+
+            } catch (e: Exception) {
+
+                logger.error(
+                    "[Executor] Failed {}: {}",
+                    opportunity.opportunityKey.value,
+                    e.message,
+                    e
+                )
+            }
+        }
+    }
+
+    /*
+     * ======================================================
+     * APPLICATION STARTUP
+     * ======================================================
+     */
+
+    try {
+
+        logger.info(
+            "Initializing startup orchestrator..."
+        )
+
+        startupOrchestrator.startUp()
+
+    } finally {
+
+        /*
+         * This executes if StartupOrchestrator exits
+         * normally or throws.
+         */
+
+        logger.info(
+            "Shutting down SpreadSniper..."
+        )
+
+        appScope.cancel()
+
+        redisClient.close()
+
+        logger.info(
+            "SpreadSniper shutdown complete."
+        )
+    }
 }
-
