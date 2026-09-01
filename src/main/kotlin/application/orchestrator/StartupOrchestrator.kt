@@ -1,19 +1,16 @@
 package application.orchestrator
 
+import application.health.HealthState
 import configurations.AppConfig
-import configurations.DexConfigurations
 import configurations.QuoterConfiguration
 import domain.events.EventBus
 import domain.interfaces.DexQuoter
 import domain.models.Chain
-import domain.models.Dex
 import domain.models.DexPair
 import domain.models.registries.DexPairs
 import domain.models.registries.PoolRegistry
 import infrastructure.blockchain.BlockSubscriber
 import infrastructure.blockchain.Web3Utils
-import infrastructure.dex.AerodromePoolResolver
-import infrastructure.dex.UniV2PoolResolver
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.runBlocking
@@ -31,15 +28,16 @@ import kotlin.time.Duration.Companion.milliseconds
  * - opportunity processing
  */
 class StartupOrchestrator(
-    eventBus: EventBus,
-    private val poolRegistry: PoolRegistry
+    private val eventBus: EventBus,
+    private val poolRegistry: PoolRegistry,
+    private val healthState: HealthState
 ) {
 
     private val logger =
         LoggerFactory.getLogger(StartupOrchestrator::class.java)
 
     private val opportunityOrchestrator =
-        OpportunityOrchestrator(eventBus)
+        OpportunityOrchestrator(eventBus, healthState)
 
     fun startUp() {
         logger.info("SpreadSniper starting...")
@@ -54,6 +52,14 @@ class StartupOrchestrator(
 
             val dexPairs =
                 DexPairs.create(poolRegistry)
+
+            healthState
+                .marketCount
+                .set(dexPairs.size)
+
+            healthState
+                .scannerRunning
+                .set(true)
 
             logger.info(
                 "Loaded {} arbitrage markets",

@@ -1,5 +1,6 @@
 package application.orchestrator
 
+import application.health.HealthState
 import configurations.AppConfig
 import domain.events.EventBus
 import domain.events.OpportunityEvent
@@ -26,7 +27,8 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 class OpportunityOrchestrator(
-    private val eventBus: EventBus
+    private val eventBus: EventBus,
+    private val healthState: HealthState
 ) {
 
     private val logger =
@@ -39,79 +41,80 @@ class OpportunityOrchestrator(
         lastEmailMs: Long
     ): Long {
 
-        logger.info("Processing opportunities...")
-        logger.info(
-            "Checking {} configured pairs with {} quoters",
-            dexPairs.size,
-            quoters.size
-        )
-
-        val gasCostUsd =
-            if (AppConfig.dynamicGasEnabled) {
-                GasEstimator.estimateGasCostUsd(
-                    web3,
-                    AppConfig.gasLimit
-                )
-            } else {
-                AppConfig.gasCostEstimate
-            }
-
-        val opportunities =
-            detectPairsInParallel(
-                dexPairs = dexPairs,
-                web3 = web3,
-                quoters = quoters,
-                gasCostUsd = gasCostUsd
-            )
-
-        logger.info(
-            "Best opportunities: {}",
-            opportunities
-        )
-
-        val bestOpportunity =
-            selectBestOpportunity(
-                opportunities = opportunities,
-                minProfitUsd = AppConfig.profitThresholdUSD
-            )
-
-        if (bestOpportunity == null) {
-            logNoOpportunities(opportunities)
-            return lastEmailMs
-        }
-
-        val now =
+        val startedAt =
             System.currentTimeMillis()
 
-        val updatedLastEmailMs =
-            if (
-                now - lastEmailMs >
-                AppConfig.emailCooldownMs
-            ) {
-                eventBus.emit(
-                    OpportunityEvent.Notification(
-                        bestOpportunity
+        try {
+            logger.info("Processing opportunities...")
+
+            val gasCostUsd =
+                if (AppConfig.dynamicGasEnabled) {
+                    GasEstimator.estimateGasCostUsd(
+                        web3,
+                        AppConfig.gasLimit
                     )
+                } else {
+                    AppConfig.gasCostEstimate
+                }
+
+            val opportunities =
+                detectPairsInParallel(
+                    dexPairs = dexPairs,
+                    web3 = web3,
+                    quoters = quoters,
+                    gasCostUsd = gasCostUsd
                 )
 
-                now
-            } else {
-                lastEmailMs
+            val bestOpportunity =
+                selectBestOpportunity(
+                    opportunities,
+                    AppConfig.profitThresholdUSD
+                )
+
+            if (bestOpportunity == null) {
+                logNoOpportunities(opportunities)
+                return lastEmailMs
             }
 
-        eventBus.emit(
-            OpportunityEvent.OpportunityFound(
-                bestOpportunity
-            )
-        )
+            val now =
+                System.currentTimeMillis()
 
-        eventBus.emit(
-            OpportunityEvent.ExecuteOpportunity(
-                bestOpportunity
-            )
-        )
+            val updatedLastEmailMs =
+                if (
+                    now - lastEmailMs >
+                    AppConfig.emailCooldownMs
+                ) {
+                    eventBus.emit(
+                        OpportunityEvent.Notification(
+                            bestOpportunity
+                        )
+                    )
 
-        return updatedLastEmailMs
+                    now
+                } else {
+                    lastEmailMs
+                }
+
+            eventBus.emit(
+                OpportunityEvent.OpportunityFound(
+                    bestOpportunity
+                )
+            )
+
+            eventBus.emit(
+                OpportunityEvent.ExecuteOpportunity(
+                    bestOpportunity
+                )
+            )
+
+            return updatedLastEmailMs
+
+        } finally {
+            healthState.lastScanDurationMs.set(
+                System.currentTimeMillis() -
+                        startedAt
+            )
+        }
     }
 
     private suspend fun detectPairsInParallel(
@@ -167,6 +170,10 @@ class OpportunityOrchestrator(
 
         val blockCtx =
             currentBlockCtx(web3)
+
+        healthState.lastProcessedBlock.set(
+            blockCtx.number.toLong()
+        )
 
         val block =
             blockCtx.param

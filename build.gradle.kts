@@ -15,6 +15,9 @@ repositories {
 dependencies {
     implementation("org.web3j:core:4.9.5")
     implementation("io.ktor:ktor-client-core:2.3.11")
+    implementation("io.ktor:ktor-server-core:2.3.11")
+    implementation("io.ktor:ktor-server-netty:2.3.11")
+    implementation("io.ktor:ktor-server-content-negotiation:2.3.11")
     implementation("io.ktor:ktor-client-cio:2.3.11") // For CIO engine (or choose another like Apache, OkHttp)
     implementation("io.ktor:ktor-client-content-negotiation:2.3.11")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.11")

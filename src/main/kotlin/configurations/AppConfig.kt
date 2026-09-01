@@ -1,6 +1,14 @@
 package configurations
 
 object AppConfig {
+    val httpPort: Int by lazy {
+        getEnvOrNull("PORT")
+            ?.toIntOrNull()
+            ?: getEnvOrNull("HTTP_PORT")
+                ?.toIntOrNull()
+            ?: 8080
+    }
+
     val ethereumRpc: String by lazy { getEnv("ETHEREUM_RPC") }
     val baseRpc: String by lazy { getEnv("BASE_RPC") }
     val loanshotUrl: String by lazy {getEnv("LOANSHOT_URL")}
@@ -40,6 +48,30 @@ object AppConfig {
     val probeSizeWeth: String by lazy {
         getEnvOrNull("PROBE_SIZE_WETH")
             ?: "0.01"
+    }
+
+    val x402Enabled: Boolean by lazy {
+        getEnvOrNull("X402_ENABLED")
+            ?.toBoolean()
+            ?: false
+    }
+
+    val x402PriceUsd: String by lazy {
+        getEnvOrNull("X402_PRICE_USD")
+            ?: "0.01"
+    }
+
+    val x402RecipientAddress: String by lazy {
+        getEnv("X402_RECIPIENT_ADDRESS")
+    }
+
+    val x402Network: String by lazy {
+        getEnvOrNull("X402_NETWORK")
+            ?: "eip155:8453"
+    }
+
+    val x402FacilitatorUrl: String by lazy {
+        getEnv("X402_FACILITATOR_URL")
     }
 
     val gasCostEstimate: Double by lazy { getEnvOrNull("GAS_COST_ESTIMATE")?.toDoubleOrNull() ?: 0.25 }

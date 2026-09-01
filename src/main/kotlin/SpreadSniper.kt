@@ -1,5 +1,6 @@
 import application.executor.ArbitrageExecutor
 import application.executor.ExecutionEvaluator
+import application.health.HealthState
 import application.listeners.OpportunityCacheListener
 import application.orchestrator.StartupOrchestrator
 import client.RedisClient
@@ -17,6 +18,7 @@ import infrastructure.dex.UniV2PoolResolver
 import infrastructure.execution.RouterRegistry
 import infrastructure.execution.TradeExecutor
 import infrastructure.execution.WalletFundedArbitrageExecutionStrategy
+import infrastructure.http.HttpServer
 import infrastructure.notification.DiscordNotifierService
 import infrastructure.redis.RedisExecutionIdempotencyStore
 import infrastructure.redis.RedisOpportunityRepository
@@ -39,6 +41,16 @@ fun main() = runBlocking {
     logger.info("Loading environment variables...")
     DotenvLoader.load()
     logger.info("Environment loaded.")
+
+    val healthState =
+        HealthState()
+
+    val httpServer =
+        HttpServer(
+            port = AppConfig.httpPort,
+            healthState = healthState
+        )
+
 
     /*
      * ======================================================
@@ -111,6 +123,8 @@ fun main() = runBlocking {
         RedisClient(
             redisUrl = AppConfig.redisUrl
         )
+
+    healthState.redisConnected.set(true)
 
     val opportunityRepository =
         RedisOpportunityRepository(
@@ -195,7 +209,8 @@ fun main() = runBlocking {
     val startupOrchestrator =
         StartupOrchestrator(
             eventBus = eventBus,
-            poolRegistry = poolRegistry
+            poolRegistry = poolRegistry,
+            healthState = healthState
         )
 
     /*
@@ -364,6 +379,14 @@ fun main() = runBlocking {
      */
 
     try {
+        logger.info(
+            "Starting HTTP server on port {}...",
+            AppConfig.httpPort
+        )
+
+        httpServer.start()
+
+        logger.info("HTTP server started")
 
         logger.info(
             "Initializing startup orchestrator..."
@@ -372,22 +395,13 @@ fun main() = runBlocking {
         startupOrchestrator.startUp()
 
     } finally {
+        logger.info("Shutting down SpreadSniper...")
 
-        /*
-         * This executes if StartupOrchestrator exits
-         * normally or throws.
-         */
-
-        logger.info(
-            "Shutting down SpreadSniper..."
-        )
-
+        httpServer.stop()
         appScope.cancel()
-
         redisClient.close()
+        healthState.redisConnected.set(false)
 
-        logger.info(
-            "SpreadSniper shutdown complete."
-        )
+        logger.info("SpreadSniper shutdown complete.")
     }
 }
